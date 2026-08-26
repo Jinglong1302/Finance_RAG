@@ -1,0 +1,76 @@
+[tool.poetry]
+name = "finance-rag"
+description = "Enterprise financial intelligence engine using Corrective RAG for SEC 10-K/10-Q analysis"
+version = "0.1.0"
+authors = ["Finance RAG Team"]
+readme = "README.md"
+packages = [{include = "src"}, {include = "config"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+# LLM & Orchestration
+langchain-core = ">=0.2,<0.4"
+langchain-openai = ">=0.1,<0.3"
+langgraph = ">=0.1,<0.3"
+openai = "^1.30"
+
+# Embeddings & Reranking
+FlagEmbedding = "^1.2"
+sentence-transformers = "^3.0"
+torch = "^2.3"
+
+# Vector Database
+qdrant-client = "^1.9"
+
+# Data Ingestion
+sec-edgar-downloader = "^5.0"
+beautifulsoup4 = "^4.12"
+lxml = "^5.0"
+
+# Evaluation
+ragas = ">=0.1,<0.3"
+datasets = "^2.19"
+
+# Utilities
+pydantic = "^2.7"
+pydantic-settings = "^2.3"
+python-dotenv = "^1.0"
+tiktoken = "^0.7"
+rich = "^13.7"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-asyncio = "^0.23"
+pytest-cov = "^5.0"
+ruff = "^0.4"
+mypy = "^1.10"
+
+[tool.poetry.group.notebook.dependencies]
+jupyter = "^1.0"
+ipywidgets = "^8.0"
+matplotlib = "^3.9"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
