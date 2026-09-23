@@ -14,6 +14,7 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.models import (
     FieldCondition,
     Filter,
+    MatchAny,
     MatchValue,
     SparseVector,
 )
@@ -212,12 +213,23 @@ class HybridSearcher:
                     )
                 )
             elif field == "fiscal_year":
-                conditions.append(
-                    FieldCondition(
-                        key=field,
-                        match=MatchValue(value=int(value)),
+                if isinstance(value, (list, tuple)):
+                    conditions.append(
+                        FieldCondition(
+                            key=field,
+                            match=MatchAny(any=[int(v) for v in value]),
+                        )
                     )
-                )
+                else:
+                    y = int(value)
+                    # SEC 10-K filings contain 3-year comparative financial statements
+                    # (Y, Y-1, Y-2), so year Y data can appear in filing Y, Y+1, or Y+2.
+                    conditions.append(
+                        FieldCondition(
+                            key=field,
+                            match=MatchAny(any=[y, y + 1, y + 2]),
+                        )
+                    )
 
         if not conditions:
             return None

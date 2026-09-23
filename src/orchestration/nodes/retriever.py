@@ -56,6 +56,18 @@ def make_retriever_node(searcher: HybridSearcher):
                 filters=filters if filters else None,
                 top_k=top_k,
             )
+            # Fallback: if filtered search yields 0 results and fiscal_year was filtered,
+            # retry without fiscal_year to avoid blocking relevant comparative disclosures.
+            if not results and filters and "fiscal_year" in filters:
+                relaxed_filters = {k: v for k, v in filters.items() if k != "fiscal_year"}
+                logger.info(
+                    f"0 results with fiscal_year filter. Retrying with relaxed filters: {relaxed_filters}"
+                )
+                results = searcher.search(
+                    query=query,
+                    filters=relaxed_filters if relaxed_filters else None,
+                    top_k=top_k,
+                )
             for r in results:
                 all_results.append({
                     "chunk_id": r.chunk_id,

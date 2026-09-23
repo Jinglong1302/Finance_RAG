@@ -94,14 +94,17 @@ def make_reranker_node(
             f"expanded {sum(1 for e in enriched if e.parent_text)} parents"
         )
 
-        # Build trace: top chunks with scores and section labels
+        # Build trace: top chunks with scores, section labels, and full text
         chunk_trace = [
             {
                 "rank": i + 1,
                 "chunk_id": r.chunk_id,
                 "section": r.metadata.get("section_id", r.metadata.get("section_title", "?")),
+                "fiscal_year": r.metadata.get("fiscal_year", "?"),
+                "company": r.metadata.get("company_ticker", "?"),
                 "rerank_score": round(r.score, 4),
                 "text_preview": r.text[:120].replace("\n", " "),
+                "text_full": r.text,  # full child text for detailed report
             }
             for i, r in enumerate(reranked)
         ]

@@ -74,41 +74,10 @@ def hallucination_guard_node(state: CRAGState) -> dict[str, Any]:
         check_result = result.get("result", "pass")
         issues = result.get("issues", [])
 
-        if check_result == "fail":
-            logger.warning(
-                f"Hallucination detected: {len(issues)} issues: "
-                + "; ".join(issues[:3])
-            )
-
-            # If we've exceeded CRAG budget, add warnings instead of retrying
-            cycle_count = state.get("cycle_count", 0)
-            if cycle_count >= 2:
-                # Mark issues in the answer
-                warning_text = (
-                    "\n\n⚠️ **Verification Notes:**\n"
-                    + "\n".join(f"- [UNVERIFIED] {issue}" for issue in issues)
-                )
-                final_answer = answer + warning_text
-                trace = {
-                    "node": "hallucination_guard",
-                    "model": "gpt-4o",
-                    "prompt_tokens": token_detail["prompt_tokens"],
-                    "cached_tokens": token_detail["cached_tokens"],
-                    "completion_tokens": token_detail["completion_tokens"],
-                    "cost_usd": cost,
-                    "result": "fail",
-                    "issues": issues,
-                }
-                prev_trace = state.get("pipeline_trace") or []
-                return {
-                    "hallucination_check": "fail",
-                    "final_answer": final_answer,
-                    "cost_accumulated": state.get("cost_accumulated", 0.0) + cost,
-                    "pipeline_trace": prev_trace + [trace],
-                }
-        else:
-            logger.info("Hallucination check: PASS")
-
+        # Build the trace entry ONCE — single return path prevents duplicate entries.
+        # Previously there were two separate return statements (early-return for
+        # fail+cycle>=2, fall-through for all other cases) which caused a second
+        # trace entry to be written for the fall-through path.
         trace = {
             "node": "hallucination_guard",
             "model": "gpt-4o",
@@ -117,13 +86,33 @@ def hallucination_guard_node(state: CRAGState) -> dict[str, Any]:
             "completion_tokens": token_detail["completion_tokens"],
             "cost_usd": cost,
             "result": check_result,
-            "issues": [],
+            "issues": issues,  # always preserved, not reset to []
         }
         prev_trace = state.get("pipeline_trace") or []
 
+        if check_result == "fail":
+            logger.warning(
+                f"Hallucination detected: {len(issues)} issues: "
+                + "; ".join(issues[:3])
+            )
+            cycle_count = state.get("cycle_count", 0)
+            if cycle_count >= 2:
+                # Budget exhausted — annotate the answer with unverified warnings
+                warning_text = (
+                    "\n\n⚠️ **Verification Notes:**\n"
+                    + "\n".join(f"- [UNVERIFIED] {issue}" for issue in issues)
+                )
+                final_answer = answer + warning_text
+            else:
+                # CRAG graph will trigger a rewrite cycle; pass answer through unchanged
+                final_answer = answer
+        else:
+            logger.info("Hallucination check: PASS")
+            final_answer = answer
+
         return {
             "hallucination_check": check_result,
-            "final_answer": answer,
+            "final_answer": final_answer,
             "cost_accumulated": state.get("cost_accumulated", 0.0) + cost,
             "pipeline_trace": prev_trace + [trace],
         }

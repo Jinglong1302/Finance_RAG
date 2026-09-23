@@ -1,0 +1,13 @@
+{"question": "What was Apple's total net sales in FY2024?", "ground_truth": "$391,035 million", "category": "extraction", "company": "Apple", "difficulty": "easy"}
+{"question": "What was Apple's total net sales in FY2023?", "ground_truth": "$383,285 million", "category": "extraction", "company": "Apple", "difficulty": "easy"}
+{"question": "What was Apple's total net sales in FY2022?", "ground_truth": "$394,328 million", "category": "extraction", "company": "Apple", "difficulty": "easy"}
+{"question": "What was Apple's net income in FY2024?", "ground_truth": "$93,736 million", "category": "extraction", "company": "Apple", "difficulty": "easy"}
+{"question": "What was Apple's net income in FY2023?", "ground_truth": "$96,995 million", "category": "extraction", "company": "Apple", "difficulty": "easy"}
+{"question": "What was Apple's cost of sales in FY2024?", "ground_truth": "$210,352 million", "category": "extraction", "company": "Apple", "difficulty": "easy"}
+{"question": "What was Apple's gross margin in FY2024?", "ground_truth": "$180,683 million", "category": "extraction", "company": "Apple", "difficulty": "easy"}
+{"question": "What was Apple's total operating expenses in FY2024?", "ground_truth": "$241,764 million", "category": "extraction", "company": "Apple", "difficulty": "medium"}
+{"question": "What was Apple's research and development expense in FY2024?", "ground_truth": "$31,370 million", "category": "extraction", "company": "Apple", "difficulty": "easy"}
+{"question": "What was Apple's earnings per diluted share in FY2024?", "ground_truth": "$6.08", "category": "extraction", "company": "Apple", "difficulty": "easy"}
+{"question": "What were Apple's total assets as of September 28, 2024?", "ground_truth": "$364,980 million", "category": "extraction", "company": "Apple", "difficulty": "medium"}
+{"question": "What was Apple's iPhone revenue in FY2024?", "ground_truth": "$201,183 million", "category": "extraction", "company": "Apple", "difficulty": "easy"}
+{"question": "What was Apple's Services revenue in FY2024?", "ground_truth": "$96,169 million", "category": "extraction", "company": "Apple", "difficulty": "easy"}

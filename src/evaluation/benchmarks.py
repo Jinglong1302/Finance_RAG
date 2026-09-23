@@ -29,29 +29,59 @@ class EvalSample:
 def load_financebench(split: str = "all") -> list[EvalSample]:
     """Load the FinanceBench evaluation dataset.
 
+    Downloads the JSONL file directly from HuggingFace Hub to avoid
+    a compatibility issue between ``datasets`` v2.21+ and the
+    FinanceBench dataset schema.
+
     Args:
         split: "all", "dev" (first 20%), or "eval" (last 80%).
 
     Returns:
         List of EvalSample objects.
     """
-    from datasets import load_dataset
+    import json
+
+    from huggingface_hub import hf_hub_download
 
     logger.info("Loading FinanceBench dataset...")
 
     try:
-        dataset = load_dataset("PatronusAI/financebench", split="train")
+        path = hf_hub_download(
+            repo_id="PatronusAI/financebench",
+            filename="financebench_merged.jsonl",
+            repo_type="dataset",
+        )
+        with open(path, encoding="utf-8") as f:
+            rows = [json.loads(line) for line in f if line.strip()]
     except Exception as e:
         logger.error(f"Failed to load FinanceBench: {e}")
         return []
 
     samples: list[EvalSample] = []
-    for item in dataset:
+    for item in rows:
+        # Map question_reasoning to a simplified category
+        reasoning = item.get("question_reasoning") or ""
+        if "arithmetic" in reasoning.lower() or "calculation" in reasoning.lower():
+            category = "arithmetic"
+        elif "compar" in reasoning.lower():
+            category = "comparative"
+        else:
+            category = "extraction"
+
+        evidence_raw = item.get("evidence", "")
+        if isinstance(evidence_raw, list):
+            evidence_raw = "\n".join(
+                e.get("evidence_text", str(e)) if isinstance(e, dict) else str(e)
+                for e in evidence_raw
+            )
+
         sample = EvalSample(
             question=item.get("question", ""),
             ground_truth=item.get("answer", ""),
-            evidence=item.get("evidence", item.get("document", "")),
+            evidence=evidence_raw,
             source="financebench",
+            category=category,
+            difficulty=item.get("question_type", ""),
         )
         if sample.question and sample.ground_truth:
             samples.append(sample)

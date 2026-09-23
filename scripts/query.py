@@ -219,25 +219,46 @@ def _display_pipeline_report(result: dict) -> None:
         # ── Reranker ─────────────────────────────────────────────────────────
         elif node == "reranker":
             console.print(f"\n[bold yellow]3. Cross-Encoder Reranker[/bold yellow]")
+            # Summary table — scores and metadata only (no truncated preview)
             t = Table(show_header=True, header_style="bold", box=box.SIMPLE)
             t.add_column("Rank", justify="right", width=5)
             t.add_column("Score", justify="right", width=8)
-            t.add_column("Section", width=35)
-            t.add_column("Preview")
+            t.add_column("Company", width=8)
+            t.add_column("FY", width=6)
+            t.add_column("Section", width=45)
             for chunk in entry.get("chunks", []):
                 score_val = chunk.get("rerank_score", 0)
-                score_str = f"{score_val:.3f}"
                 t.add_row(
                     str(chunk.get("rank", "?")),
-                    score_str,
-                    str(chunk.get("section", ""))[:35],
-                    str(chunk.get("text_preview", ""))[:80],
+                    f"{score_val:.3f}",
+                    str(chunk.get("company", "?")),
+                    str(chunk.get("fiscal_year", "?")),
+                    str(chunk.get("section", ""))[:45],
                 )
             console.print(t)
             console.print(
                 f"  [dim]Candidates in: {entry.get('candidates_in',0)} → "
                 f"Top-K selected: {entry.get('top_k',0)}[/dim]"
             )
+            # Full-text panels for each retrieved chunk
+            console.print("\n  [bold dim]Retrieved Chunk Contents:[/bold dim]")
+            for chunk in entry.get("chunks", []):
+                rank = chunk.get("rank", "?")
+                score = chunk.get("rerank_score", 0)
+                section = chunk.get("section", "?")
+                fy = chunk.get("fiscal_year", "?")
+                company = chunk.get("company", "?")
+                full_text = chunk.get("text_full") or chunk.get("text_preview", "(no text)")
+                title = (f"[bold]Rank {rank}[/bold]  score={score:.3f}  "
+                         f"{company} FY{fy}  |  {section}")
+                console.print(
+                    Panel(
+                        full_text,
+                        title=title,
+                        border_style="dim",
+                        expand=True,
+                    )
+                )
 
         # ── Grader ───────────────────────────────────────────────────────────
         elif node == "grader":
