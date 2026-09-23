@@ -6,6 +6,7 @@ single-query and multi-query (decomposed) retrieval.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from src.orchestration.state import CRAGState
@@ -37,6 +38,8 @@ def make_retriever_node(searcher: HybridSearcher):
         Returns:
             State update with search_results.
         """
+        start_t = time.perf_counter()
+
         # Use rewritten query if this is a CRAG retry
         rewritten = state.get("rewritten_query")
         if rewritten:
@@ -85,10 +88,26 @@ def make_retriever_node(searcher: HybridSearcher):
 
         deduped = sorted(seen.values(), key=lambda r: r["score"], reverse=True)
 
+        duration_s = round(time.perf_counter() - start_t, 3)
+
         logger.info(
             f"Retrieved {len(all_results)} raw results → "
-            f"{len(deduped)} unique chunks"
+            f"{len(deduped)} unique chunks in {duration_s}s"
         )
+
+        retrieved_chunks = [
+            {
+                "rank": i + 1,
+                "chunk_id": r["chunk_id"],
+                "score": round(r["score"], 4),
+                "company": r["metadata"].get("company_ticker", "?"),
+                "fiscal_year": r["metadata"].get("fiscal_year", "?"),
+                "section": r["metadata"].get("section_title", r["metadata"].get("section_id", "?")),
+                "text_preview": r["text"][:140].replace("\n", " "),
+                "text_full": r["text"],
+            }
+            for i, r in enumerate(deduped)
+        ]
 
         trace = {
             "node": "retriever",
@@ -97,6 +116,8 @@ def make_retriever_node(searcher: HybridSearcher):
             "raw_results": len(all_results),
             "unique_results": len(deduped),
             "top_scores": [round(r["score"], 4) for r in deduped[:5]],
+            "chunks": retrieved_chunks,
+            "duration_s": duration_s,
         }
         prev_trace = state.get("pipeline_trace") or []
 

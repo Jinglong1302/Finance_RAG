@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finance RAG — Inspection & Monitoring Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css?v=2.1">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+            <polyline points="16 7 22 7 22 13"></polyline>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">Finance RAG</h1>
+          <p class="brand-subtitle">Corrective RAG Intelligence Engine & SEC 10-K Inspector</p>
+        </div>
+      </div>
+      <div class="system-status">
+        <span class="status-pill status-online" id="statusPill">
+          <span class="status-dot"></span>
+          <span id="statusText">System Ready</span>
+        </span>
+        <span class="badge badge-dim" id="modelBadge">GPT-4o</span>
+        <span class="badge badge-dim" id="qdrantBadge">Qdrant Active</span>
+        <button class="btn-ghost" id="reloadPipelineBtn" title="Reload pipeline modules and graph" style="padding: 4px 10px;">
+          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          <span>Reload</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Query Bar -->
+    <section class="query-section">
+      <div class="query-box">
+        <div class="input-wrapper">
+          <svg class="search-icon" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input 
+            type="text" 
+            id="queryInput" 
+            placeholder="Ask a financial question (e.g. What was Apple's total net sales in FY2024?)" 
+            autocomplete="off"
+          />
+          <button id="clearBtn" class="clear-btn" title="Clear input" style="display: none;">&times;</button>
+        </div>
+        <button id="submitBtn" class="btn-primary">
+          <span class="btn-text">Execute CRAG</span>
+          <svg class="btn-icon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Quick sample suggestions -->
+      <div class="sample-queries">
+        <span class="samples-label">Quick Scenarios:</span>
+        <div class="chips-container" id="sampleChips">
+          <!-- Loaded dynamically -->
+          <button class="chip" data-query="What was Apple's total net sales in FY2024?">AAPL FY24 Net Sales</button>
+          <button class="chip" data-query="What was Apple's total net sales in FY2023?">AAPL FY23 Net Sales</button>
+          <button class="chip" data-query="What was Apple's total net sales in FY2022?">AAPL FY22 Net Sales (Comparative)</button>
+          <button class="chip" data-query="What was Apple's gross margin in FY2024?">AAPL Gross Margin FY24</button>
+          <button class="chip" data-query="What was Apple's research and development expense in FY2024?">AAPL R&D Expense FY24</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Telemetry KPI Bar -->
+    <section class="kpi-bar" id="kpiBar" style="display: none;">
+      <div class="kpi-card">
+        <span class="kpi-label">CRAG Confidence</span>
+        <span class="kpi-value" id="kpiConfidence">-</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Hallucination Guard</span>
+        <span class="kpi-value" id="kpiGuard">-</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Retrieved Chunks</span>
+        <span class="kpi-value" id="kpiChunks">-</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Execution Latency</span>
+        <span class="kpi-value" id="kpiLatency">-</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Accumulated Cost</span>
+        <span class="kpi-value text-accent" id="kpiCost">-</span>
+      </div>
+    </section>
+
+    <!-- Main Workspace (Split View) -->
+    <main class="workspace" id="workspace">
+      <!-- Welcome Empty State -->
+      <div class="empty-state" id="emptyState">
+        <div class="empty-illustration">
+          <svg viewBox="0 0 24 24" width="56" height="56" stroke="currentColor" stroke-width="1.2" fill="none">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+        <h3>Ready for Financial Querying</h3>
+        <p>Type a question above or click one of the quick scenario pills to inspect SEC filings with the full Corrective RAG pipeline.</p>
+      </div>
+
+      <!-- Loading State -->
+      <div class="loading-state" id="loadingState" style="display: none;">
+        <div class="spinner"></div>
+        <h3 id="loadingTitle">Running Corrective RAG Pipeline...</h3>
+        <p id="loadingSub">Decomposing query, querying Qdrant hybrid index, reranking, and verifying evidence.</p>
+        <div class="loading-steps">
+          <span class="step-chip active" id="lstep-decompose">1. Decompose</span>
+          <span class="step-chip" id="lstep-retrieve">2. Hybrid Search</span>
+          <span class="step-chip" id="lstep-rerank">3. Rerank</span>
+          <span class="step-chip" id="lstep-grade">4. Grade</span>
+          <span class="step-chip" id="lstep-generate">5. Generate</span>
+          <span class="step-chip" id="lstep-guard">6. Guardrail</span>
+        </div>
+      </div>
+
+      <!-- Active Results Split View -->
+      <div class="results-grid" id="resultsGrid" style="display: none;">
+        <!-- Left: Verified Answer & Evidence -->
+        <div class="answer-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+              <span>Verified Financial Answer</span>
+            </div>
+            <button class="btn-sm btn-ghost" id="copyAnswerBtn" title="Copy answer to clipboard">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copy</span>
+            </button>
+          </div>
+
+          <!-- Answer Body -->
+          <div class="answer-content markdown-body" id="answerBody"></div>
+
+          <!-- Structured Metrics Box (if present) -->
+          <div class="metrics-section" id="metricsSection" style="display: none;">
+            <h4 class="section-heading">Extracted Financial Metrics</h4>
+            <div class="metrics-grid" id="metricsGrid"></div>
+          </div>
+
+          <!-- Numbered Citations & Sources -->
+          <div class="citations-section" id="citationsSection">
+            <h4 class="section-heading">Grounding Citations</h4>
+            <div class="citations-list" id="citationsList"></div>
+          </div>
+        </div>
+
+        <!-- Right: Step-by-Step CRAG Pipeline Monitor -->
+        <div class="inspector-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              <span>CRAG Pipeline Inspector</span>
+            </div>
+            <span class="badge badge-cyan" id="cycleBadge">Cycle 0 (Direct)</span>
+          </div>
+
+          <!-- Stepper Navigation -->
+          <div class="stepper-nav" id="stepperNav">
+            <button class="step-btn active" data-step="decomposer">
+              <span class="step-num">1</span>
+              <span class="step-name">Decompose</span>
+            </button>
+            <button class="step-btn" data-step="retriever">
+              <span class="step-num">2</span>
+              <span class="step-name">Retrieve</span>
+            </button>
+            <button class="step-btn" data-step="reranker">
+              <span class="step-num">3</span>
+              <span class="step-name">Rerank</span>
+            </button>
+            <button class="step-btn" data-step="grader">
+              <span class="step-num">4</span>
+              <span class="step-name">Grade</span>
+            </button>
+            <button class="step-btn" data-step="generator">
+              <span class="step-num">5</span>
+              <span class="step-name">Generate</span>
+            </button>
+            <button class="step-btn" data-step="guard">
+              <span class="step-num">6</span>
+              <span class="step-name">Guardrail</span>
+            </button>
+            <button class="step-btn" data-step="raw">
+              <span class="step-num">{ }</span>
+              <span class="step-name">Raw State</span>
+            </button>
+          </div>
+
+          <!-- Inspector Content Area -->
+          <div class="inspector-body" id="inspectorBody">
+            <!-- Rendered dynamically by app.js depending on active step -->
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Chunk Detail Modal / Fullscreen Viewer -->
+    <div class="modal-overlay" id="chunkModal" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title" id="modalTitle">Chunk Inspection</div>
+          <button class="modal-close" id="modalClose">&times;</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=2.1"></script>
+</body>
+</html>

@@ -7,6 +7,7 @@ structured metadata filters using GPT-4o.
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from openai import OpenAI
@@ -41,6 +42,7 @@ def query_decomposer_node(state: CRAGState) -> dict[str, Any]:
     if not query:
         return {"error": "No query provided"}
 
+    start_t = time.perf_counter()
     client = OpenAI()
 
     try:
@@ -82,6 +84,8 @@ def query_decomposer_node(state: CRAGState) -> dict[str, Any]:
             f"type={query_type}, filters={structured_filters}"
         )
 
+        duration_s = round(time.perf_counter() - start_t, 3)
+
         trace = {
             "node": "query_decomposer",
             "model": "gpt-4o",
@@ -92,6 +96,7 @@ def query_decomposer_node(state: CRAGState) -> dict[str, Any]:
             "sub_queries": sub_queries,
             "filters": structured_filters,
             "query_type": query_type,
+            "duration_s": duration_s,
         }
         prev_trace = state.get("pipeline_trace") or []
 

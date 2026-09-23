@@ -7,6 +7,7 @@ is fully supported by the source context.
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from openai import OpenAI
@@ -47,6 +48,7 @@ def hallucination_guard_node(state: CRAGState) -> dict[str, Any]:
     # Format context for verification
     context = format_context_for_generation(enriched, include_parent=False)
 
+    start_t = time.perf_counter()
     client = OpenAI()
 
     try:
@@ -78,6 +80,8 @@ def hallucination_guard_node(state: CRAGState) -> dict[str, Any]:
         # Previously there were two separate return statements (early-return for
         # fail+cycle>=2, fall-through for all other cases) which caused a second
         # trace entry to be written for the fall-through path.
+        duration_s = round(time.perf_counter() - start_t, 3)
+
         trace = {
             "node": "hallucination_guard",
             "model": "gpt-4o",
@@ -87,6 +91,7 @@ def hallucination_guard_node(state: CRAGState) -> dict[str, Any]:
             "cost_usd": cost,
             "result": check_result,
             "issues": issues,  # always preserved, not reset to []
+            "duration_s": duration_s,
         }
         prev_trace = state.get("pipeline_trace") or []
 

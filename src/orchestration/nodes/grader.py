@@ -8,6 +8,7 @@ Determines the CRAG action based on grade distribution.
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from openai import OpenAI
@@ -55,6 +56,7 @@ def grader_node(state: CRAGState) -> dict[str, Any]:
     )
 
     client = OpenAI()
+    start_t = time.perf_counter()
 
     try:
         response = client.chat.completions.create(
@@ -112,6 +114,41 @@ def grader_node(state: CRAGState) -> dict[str, Any]:
             if grade and grade.get("relevance") != "irrelevant":
                 filtered_contexts.append(ctx)
 
+        # Enrich grades with chunk metadata so the user can inspect what was graded and why
+        enriched_grades = []
+        for g in grades:
+            idx = g.get("chunk_index", 0)
+            chunk_obj = enriched[idx] if idx < len(enriched) else {}
+            if hasattr(chunk_obj, "metadata"):
+                chunk_meta = chunk_obj.metadata or {}
+                chunk_text = chunk_obj.child_text or ""
+            elif isinstance(chunk_obj, dict):
+                chunk_meta = chunk_obj.get("metadata", {}) or {}
+                chunk_text = chunk_obj.get("child_text", "") or ""
+            else:
+                chunk_meta = {}
+                chunk_text = str(chunk_obj)
+
+            parent_text = (
+                getattr(chunk_obj, "parent_text", None)
+                if hasattr(chunk_obj, "parent_text")
+                else (chunk_obj.get("parent_text") if isinstance(chunk_obj, dict) else None)
+            )
+
+            enriched_grades.append({
+                "chunk_index": idx,
+                "relevance": g.get("relevance", "irrelevant"),
+                "reason": g.get("reason", "No reason provided"),
+                "company": chunk_meta.get("company_ticker", "AAPL"),
+                "fiscal_year": chunk_meta.get("fiscal_year", ""),
+                "section": chunk_meta.get("section_title", chunk_meta.get("section_id", "Section")),
+                "text_preview": chunk_text[:200].replace("\n", " "),
+                "text_full": chunk_text,
+                "parent_text": parent_text,
+            })
+
+        duration_s = round(time.perf_counter() - start_t, 3)
+
         trace = {
             "node": "grader",
             "model": "gpt-4o",
@@ -120,11 +157,15 @@ def grader_node(state: CRAGState) -> dict[str, Any]:
             "completion_tokens": token_detail["completion_tokens"],
             "cost_usd": cost,
             "relevant": relevant_count,
+            "relevant_count": relevant_count,
             "partial": partial_count,
+            "ambiguous_count": partial_count,
             "irrelevant": irrelevant_count,
+            "irrelevant_count": irrelevant_count,
             "confidence": confidence,
             "action": action,
-            "grades": grades,
+            "grades": enriched_grades,
+            "duration_s": duration_s,
         }
         prev_trace = state.get("pipeline_trace") or []
 

@@ -42,7 +42,16 @@ docker compose up -d
 poetry run python scripts/ingest.py --tickers AAPL MSFT NVDA AMZN --filing-type 10-K --limit 3
 ```
 
-### Query
+### Interactive Web Dashboard (UI)
+
+Launch the visual inspection & monitoring dashboard:
+
+```bash
+poetry run python scripts/serve.py
+```
+Open [http://localhost:8000](http://localhost:8000) to inspect every CRAG step, view interactive citations, and inspect reranked evidence chunks in real time.
+
+### CLI Query
 
 ```bash
 poetry run python scripts/query.py "What was Apple's total revenue in FY2024?"

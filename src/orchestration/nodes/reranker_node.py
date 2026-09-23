@@ -6,6 +6,7 @@ parent context.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from src.orchestration.state import CRAGState
@@ -46,6 +47,8 @@ def make_reranker_node(
                 "reranked_results": [],
                 "enriched_contexts": [],
             }
+
+        start_t = time.perf_counter()
 
         # Convert dicts back to SearchResult objects
         candidates = [
@@ -94,17 +97,20 @@ def make_reranker_node(
             f"expanded {sum(1 for e in enriched if e.parent_text)} parents"
         )
 
-        # Build trace: top chunks with scores, section labels, and full text
+        duration_s = round(time.perf_counter() - start_t, 3)
+
+        # Build trace: top chunks with scores, section labels, full text, and parent text
         chunk_trace = [
             {
                 "rank": i + 1,
                 "chunk_id": r.chunk_id,
-                "section": r.metadata.get("section_id", r.metadata.get("section_title", "?")),
+                "section": r.metadata.get("section_title", r.metadata.get("section_id", "?")),
                 "fiscal_year": r.metadata.get("fiscal_year", "?"),
                 "company": r.metadata.get("company_ticker", "?"),
                 "rerank_score": round(r.score, 4),
-                "text_preview": r.text[:120].replace("\n", " "),
-                "text_full": r.text,  # full child text for detailed report
+                "text_preview": r.text[:140].replace("\n", " "),
+                "text_full": r.text,
+                "parent_text": enriched_dicts[i].get("parent_text") if i < len(enriched_dicts) else None,
             }
             for i, r in enumerate(reranked)
         ]
@@ -113,6 +119,7 @@ def make_reranker_node(
             "candidates_in": len(candidates),
             "top_k": len(reranked),
             "chunks": chunk_trace,
+            "duration_s": duration_s,
         }
         prev_trace = state.get("pipeline_trace") or []
 

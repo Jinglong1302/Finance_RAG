@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from openai import OpenAI
@@ -39,6 +40,7 @@ def query_rewriter_node(state: CRAGState) -> dict[str, Any]:
     grades = state.get("grading_results", [])
     failure_reason = _summarize_failure(grades, confidence)
 
+    start_t = time.perf_counter()
     client = OpenAI()
 
     try:
@@ -84,11 +86,25 @@ def query_rewriter_node(state: CRAGState) -> dict[str, Any]:
             f"'{query[:50]}...' → '{rewritten[:50]}...'"
         )
 
+        duration_s = round(time.perf_counter() - start_t, 3)
+        trace = {
+            "node": "query_rewriter",
+            "model": "gpt-4o",
+            "original_query": query,
+            "rewritten_query": rewritten,
+            "cycle": new_cycle,
+            "relaxed_filters": new_filters,
+            "duration_s": duration_s,
+            "cost_usd": cost,
+        }
+        prev_trace = state.get("pipeline_trace") or []
+
         return {
             "rewritten_query": rewritten,
             "cycle_count": new_cycle,
             "structured_filters": new_filters,
             "cost_accumulated": state.get("cost_accumulated", 0.0) + cost,
+            "pipeline_trace": prev_trace + [trace],
         }
 
     except Exception as e:
