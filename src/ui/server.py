@@ -11,9 +11,8 @@ import json
 import logging
 from pathlib import Path
 import time
-from typing import Any
-
 from aiohttp import web
+from aiohttp.typedefs import Handler
 from qdrant_client import QdrantClient
 
 from config.settings import get_settings
@@ -38,7 +37,7 @@ def create_app() -> web.Application:
     app["graph"] = None
     app["graph_lock"] = asyncio.Lock()
 
-    async def init_pipeline():
+    async def init_pipeline() -> None:
         if app["graph"] is None:
             logger.info("Initializing CRAG pipeline components...")
             qdrant_client = QdrantClient(
@@ -211,7 +210,7 @@ def create_app() -> web.Application:
             }, status=500)
 
     @web.middleware
-    async def no_cache_middleware(request, handler):
+    async def no_cache_middleware(request: web.Request, handler: Handler) -> web.StreamResponse:
         response = await handler(request)
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
