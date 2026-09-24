@@ -10,12 +10,14 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+import re
 import time
 from aiohttp import web
 from aiohttp.typedefs import Handler
 from qdrant_client import QdrantClient
 
 from config.settings import get_settings
+from src.utils.reporter import DEFAULT_REPORTS_DIR, list_reports, save_query_report
 from src.embedding.embedder import BGEEmbedder
 from src.orchestration.graph import build_crag_graph, run_query
 from src.retrieval.hybrid_search import HybridSearcher
@@ -198,6 +200,19 @@ def create_app() -> web.Application:
                 "reranked_results": raw_reranked_results,
                 "latency_seconds": round(elapsed, 3),
             }
+
+            # Automatically persist full analysis report for offline review & auditing
+            try:
+                report_info = save_query_report(payload)
+                payload["report_id"] = report_info["report_id"]
+                payload["report_file"] = report_info["filename_md"]
+                logger.info(
+                    f"Query finished ({elapsed:.2f}s, ${payload['cost_accumulated']:.4f}) | "
+                    f"Analysis report saved: {report_info['md_path']}"
+                )
+            except Exception as report_err:
+                logger.warning(f"Failed to auto-save analysis report: {report_err}")
+
             return web.json_response(payload)
 
         except Exception as e:
@@ -208,6 +223,26 @@ def create_app() -> web.Application:
                 "query": query,
                 "latency_seconds": round(elapsed, 3),
             }, status=500)
+
+    async def handle_list_reports(request: web.Request) -> web.Response:
+        """List recent query evaluation reports."""
+        reports = list_reports()
+        return web.json_response({"reports": reports})
+
+    async def handle_get_report(request: web.Request) -> web.StreamResponse:
+        """Download or view a specific query analysis report."""
+        filename = request.match_info.get("filename", "")
+        if not re.match(r"^[\w\-.]+$", filename):
+            return web.json_response({"error": "Invalid filename"}, status=400)
+        report_file = DEFAULT_REPORTS_DIR / filename
+        if not report_file.exists():
+            return web.json_response({"error": "Report not found"}, status=404)
+
+        content_type = "text/markdown; charset=utf-8" if filename.endswith(".md") else "application/json; charset=utf-8"
+        return web.FileResponse(report_file, headers={
+            "Content-Type": content_type,
+            "Content-Disposition": f'inline; filename="{filename}"',
+        })
 
     @web.middleware
     async def no_cache_middleware(request: web.Request, handler: Handler) -> web.StreamResponse:
@@ -223,6 +258,8 @@ def create_app() -> web.Application:
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/health", handle_health)
     app.router.add_get("/api/sample-queries", handle_sample_queries)
+    app.router.add_get("/api/reports", handle_list_reports)
+    app.router.add_get("/api/reports/{filename}", handle_get_report)
     app.router.add_post("/api/reload", handle_reload)
     app.router.add_post("/api/query", handle_query)
     app.router.add_static("/static", STATIC_DIR)

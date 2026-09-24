@@ -33,6 +33,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const citationsSection = document.getElementById("citationsSection");
   const citationsList = document.getElementById("citationsList");
   const copyAnswerBtn = document.getElementById("copyAnswerBtn");
+  const exportReportBtn = document.getElementById("exportReportBtn");
 
   // Inspector elements
   const cycleBadge = document.getElementById("cycleBadge");
@@ -105,6 +106,27 @@ document.addEventListener("DOMContentLoaded", () => {
       }, 1500);
     });
   });
+
+  // Export Analysis Report
+  if (exportReportBtn) {
+    exportReportBtn.addEventListener("click", () => {
+      if (!currentResult || !currentResult.report_file) return;
+      const downloadUrl = `/api/reports/${encodeURIComponent(currentResult.report_file)}`;
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = currentResult.report_file;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      const textSpan = exportReportBtn.querySelector("span");
+      const orig = textSpan.textContent;
+      textSpan.textContent = "Downloaded!";
+      setTimeout(() => {
+        textSpan.textContent = orig;
+      }, 1500);
+    });
+  }
 
   // Reload Pipeline Button
   if (reloadPipelineBtn) {
@@ -258,6 +280,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // Latency & Cost
     kpiLatency.textContent = `${data.latency_seconds || 0}s`;
     kpiCost.textContent = `$${(data.cost_accumulated || 0).toFixed(4)}`;
+
+    // Export Report Button
+    if (exportReportBtn) {
+      if (data.report_file) {
+        exportReportBtn.style.display = "inline-flex";
+        exportReportBtn.title = `Download analysis report (${data.report_file})`;
+      } else {
+        exportReportBtn.style.display = "none";
+      }
+    }
 
     // Cycle Badge
     cycleBadge.textContent = data.cycle_count > 0 ? `Cycle ${data.cycle_count} (Rewritten)` : "Cycle 0 (Direct)";

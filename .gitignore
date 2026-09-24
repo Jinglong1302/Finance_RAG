@@ -46,5 +46,6 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# === Results ===
+# === Results & Reports ===
 results/
+reports/

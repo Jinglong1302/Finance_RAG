@@ -17,8 +17,9 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 import argparse
-import sys
 from pathlib import Path
+import sys
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -37,6 +38,7 @@ from src.retrieval.hybrid_search import HybridSearcher
 from src.retrieval.parent_expander import ParentExpander
 from src.retrieval.reranker import CrossEncoderReranker
 from src.utils.logging import setup_logging
+from src.utils.reporter import save_query_report
 
 console = Console()
 
@@ -96,19 +98,29 @@ def main() -> None:
         parser.print_help()
 
 
-def _run_single_query(graph, query: str, report: bool = False) -> None:
+def _run_single_query(graph: Any, query: str, report: bool = False) -> None:
     """Run a single query and display results."""
     console.print(Panel(query, title="[bold]Query[/bold]", border_style="blue"))
 
     with console.status("[bold cyan]Searching SEC filings..."):
         result = run_query(graph, query)
 
+    # Save comprehensive report to disk
+    try:
+        payload = dict(result)
+        payload["query"] = query
+        report_info = save_query_report(payload)
+    except Exception:
+        report_info = None
+
     _display_result(result)
+    if report_info:
+        console.print(f"[dim]📁 Analysis report saved: {report_info['md_path']}[/dim]")
     if report:
         _display_pipeline_report(result)
 
 
-def _run_interactive(graph, report: bool = False) -> None:
+def _run_interactive(graph: Any, report: bool = False) -> None:
     """Run interactive query loop."""
     console.print("[bold]Interactive mode. Type 'quit' to exit.[/bold]\n")
 
@@ -122,7 +134,16 @@ def _run_interactive(graph, report: bool = False) -> None:
         with console.status("[bold cyan]Searching SEC filings..."):
             result = run_query(graph, query)
 
+        try:
+            payload = dict(result)
+            payload["query"] = query
+            report_info = save_query_report(payload)
+        except Exception:
+            report_info = None
+
         _display_result(result)
+        if report_info:
+            console.print(f"[dim]📁 Analysis report saved: {report_info['md_path']}[/dim]")
         if report:
             _display_pipeline_report(result)
         console.print()
