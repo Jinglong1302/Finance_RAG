@@ -76,9 +76,10 @@ class NaiveRAG:
         qdrant_filter = Filter(must=must_conditions)
 
         try:
-            results = self.client.search(
+            results = self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=("dense", dense_vector),
+                query=dense_vector,
+                using="dense",
                 query_filter=qdrant_filter,
                 limit=self.top_k,
                 with_payload=True,
@@ -93,7 +94,7 @@ class NaiveRAG:
                 "metadata": {k: v for k, v in (p.payload or {}).items() if k != "text"},
                 "score": p.score,
             }
-            for p in results
+            for p in results.points
         ]
 
     def generate(self, query: str, chunks: list[dict[str, Any]]) -> str:

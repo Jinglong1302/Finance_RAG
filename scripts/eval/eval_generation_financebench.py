@@ -24,6 +24,7 @@ import argparse
 import json
 import time
 from datetime import datetime
+from typing import Any
 
 from rich.console import Console
 from rich.table import Table
@@ -104,23 +105,23 @@ def _load_in_corpus_fb() -> list[tuple[EvalSample, str]]:
     return pairs
 
 
-def _run_crag(graph, question: str) -> dict:
+def _run_crag(graph: Any, question: str) -> dict[str, Any]:
     from src.orchestration.graph import run_query
     return run_query(graph, question)
 
 
 def _collect_crag_data(
-    pairs: list[tuple[EvalSample, str | None]],
-    graph,
+    pairs: list[tuple[EvalSample, str]],
+    graph: Any,
     limit: int | None,
-) -> tuple[list[dict], list[str], list[str], list[str], float]:
+) -> tuple[dict[str, list[Any]], list[str], list[str], list[str], float]:
     """Run CRAG pipeline, return ragas_data, raw_answers, predictions, ground_truths, total_latency."""
     from src.evaluation.ragas_eval import (
         _clean_answer_for_ragas,
         _format_contexts_for_ragas,
     )
 
-    ragas_data: dict = {
+    ragas_data: dict[str, list[Any]] = {
         "question": [],
         "answer": [],
         "contexts": [],
@@ -166,7 +167,7 @@ def _collect_crag_data(
     return ragas_data, raw_answers, predictions, ground_truths, total_latency
 
 
-def _run_ragas(ragas_data: dict) -> dict[str, float]:
+def _run_ragas(ragas_data: dict[str, Any]) -> dict[str, float]:
     from datasets import Dataset
     from ragas import evaluate
     from ragas.metrics import (
@@ -207,7 +208,7 @@ def main() -> None:
     fb_pairs = _load_in_corpus_fb()
     apple_samples = _load_custom_eval()
     # Apple has no per-question ticker filtering needed (AAPL already indexed)
-    all_pairs: list[tuple[EvalSample, str | None]] = fb_pairs + [
+    all_pairs: list[tuple[EvalSample, str]] = fb_pairs + [
         (s, "AAPL") for s in apple_samples
     ]
     console.print(f"Total: {len(all_pairs)} questions")

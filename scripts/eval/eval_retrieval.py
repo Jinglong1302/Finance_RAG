@@ -28,6 +28,12 @@ import argparse
 import json
 import time
 from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.evaluation.baseline import NaiveRAG
+    from src.retrieval.hybrid_search import HybridSearcher
+    from src.retrieval.reranker import CrossEncoderReranker
 
 from rich.console import Console
 from rich.table import Table
@@ -72,14 +78,12 @@ def evaluate_one(
     question: str,
     evidence_list: list[str],
     ticker: str,
-    searcher,
-    reranker,
+    searcher: HybridSearcher,
+    reranker: CrossEncoderReranker,
     top_k_retrieve: int = 25,
     top_k_rerank: int = 10,
-) -> dict:
+) -> dict[str, Any]:
     """Run CRAG retrieval + reranking for one question and compute metrics."""
-    from src.retrieval.hybrid_search import HybridSearcher
-
     candidates = searcher.search(
         question,
         filters={"company_ticker": ticker},
@@ -88,7 +92,7 @@ def evaluate_one(
     reranked = reranker.rerank(question, candidates, top_k=top_k_rerank)
     retrieved_texts = [r.text for r in reranked]
 
-    result: dict = {"question": question[:80], "ticker": ticker}
+    result: dict[str, Any] = {"question": question[:80], "ticker": ticker}
     for k in (1, 3, 5, 10):
         result[f"Hit@{k}"] = int(hit_at_k(retrieved_texts, evidence_list, k))
     result["Recall@5"] = recall_at_k(retrieved_texts, evidence_list, 5)
@@ -101,14 +105,14 @@ def evaluate_one_naive(
     question: str,
     evidence_list: list[str],
     ticker: str,
-    naive,
+    naive: NaiveRAG,
     top_k: int = 10,
-) -> dict:
+) -> dict[str, Any]:
     """Dense-only retrieval for one question."""
     chunks = naive.retrieve(question, ticker=ticker)
     retrieved_texts = [c["text"] for c in chunks]
 
-    result: dict = {"question": question[:80], "ticker": ticker}
+    result: dict[str, Any] = {"question": question[:80], "ticker": ticker}
     for k in (1, 3, 5, 10):
         result[f"Hit@{k}"] = int(hit_at_k(retrieved_texts, evidence_list, k))
     result["Recall@5"] = recall_at_k(retrieved_texts, evidence_list, 5)

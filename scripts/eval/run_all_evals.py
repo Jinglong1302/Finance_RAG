@@ -27,6 +27,7 @@ import argparse
 import json
 import subprocess
 from datetime import datetime
+from typing import Any, Mapping, cast
 
 from rich.console import Console
 from rich.table import Table
@@ -69,15 +70,16 @@ def _run_slice(script: str, limit: int | None, extra_args: list[str]) -> bool:
     return result.returncode == 0
 
 
-def _load_latest(slice_key: str) -> dict | None:
+def _load_latest(slice_key: str) -> dict[str, Any] | None:
     path = Path(SLICE_RESULTS_DIRS[slice_key]) / "latest.json"
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], data)
 
 
-def _build_summary(reports: dict[str, dict | None]) -> dict:
-    summary: dict = {}
+def _build_summary(reports: Mapping[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
 
     ret = reports.get("retrieval")
     if ret:
@@ -338,7 +340,7 @@ def main() -> None:
                 console.print(f"[red]Slice '{slice_key}' failed — continuing[/red]")
 
     # Merge
-    reports: dict[str, dict | None] = {k: _load_latest(k) for k in SLICE_SCRIPTS}
+    reports: dict[str, dict[str, Any] | None] = {k: _load_latest(k) for k in SLICE_SCRIPTS}
     available = {k: v for k, v in reports.items() if v is not None}
     if not available:
         console.print("[red]No result files found. Run the slice scripts first.[/red]")

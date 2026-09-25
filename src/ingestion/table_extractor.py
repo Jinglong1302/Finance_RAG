@@ -310,7 +310,7 @@ class TableExtractor:
                 val = cell.get(attr)
                 if val is not None:
                     try:
-                        s = val[0] if isinstance(val, list) else str(val)
+                        s = val[0] if isinstance(val, list) else val
                         if int(s) > 1:
                             return True
                     except (ValueError, TypeError):
