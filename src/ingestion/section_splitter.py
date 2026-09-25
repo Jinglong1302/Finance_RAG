@@ -223,6 +223,23 @@ class SectionSplitter:
 
         # Extract section content between boundaries
         sections: list[FilingSection] = []
+
+        # If there is content before the first section, capture it as cover page / header
+        if boundaries and boundaries[0][0] > 0:
+            first_pos = boundaries[0][0]
+            header_content = clean_html[:first_pos].strip()
+            if header_content:
+                sections.append(
+                    FilingSection(
+                        section_id="cover_page",
+                        section_name="Document Header and Cover Page",
+                        content_type="prose",
+                        html_content=clean_html[:first_pos],
+                        start_position=0,
+                        end_position=first_pos,
+                    )
+                )
+
         for i, (start_pos, section_id, section_name, content_type) in enumerate(
             boundaries
         ):
@@ -290,8 +307,10 @@ class SectionSplitter:
     ) -> list[FilingSection]:
         """Split the Notes to Financial Statements from Item 8.
 
-        If Item 8 contains notes (detected by "Note 1", "Note 2" patterns),
-        split them into a separate section with content_type="notes".
+        Item 8 begins with primary financial statements followed by
+        Notes to Consolidated Financial Statements. We anchor the split
+        to Note 1 (or preceding Notes header) to avoid prematurely splitting
+        on Item 8 index tables or footnote references.
 
         Args:
             sections: List of sections (may be modified in-place).
@@ -306,19 +325,49 @@ class SectionSplitter:
                 result.append(section)
                 continue
 
-            # Look for the Notes section within Item 8
-            notes_match = re.search(
-                r"notes?\s+to\s+(?:the\s+)?(?:consolidated\s+)?financial\s+statements",
+            # Anchor on Note 1 first to avoid matching Item 8 TOC or index tables
+            note1_match = re.search(
+                r"\bnote\s+1[.\s:\-–—]+",
                 section.html_content,
                 re.IGNORECASE,
             )
 
-            if notes_match:
-                notes_start = notes_match.start()
+            notes_start: int | None = None
+            if note1_match:
+                search_window = 1000
+                pre_window = section.html_content[
+                    max(0, note1_match.start() - search_window) : note1_match.start()
+                ]
+                notes_headers = list(
+                    re.finditer(
+                        r"notes?\s+to\s+(?:the\s+)?(?:consolidated\s+)?financial\s+statements",
+                        pre_window,
+                        re.IGNORECASE,
+                    )
+                )
+                if notes_headers:
+                    notes_start = (
+                        max(0, note1_match.start() - search_window)
+                        + notes_headers[-1].start()
+                    )
+                else:
+                    notes_start = note1_match.start()
+            else:
+                # Fallback to general pattern if Note 1 is absent
+                notes_match = re.search(
+                    r"notes?\s+to\s+(?:the\s+)?(?:consolidated\s+)?financial\s+statements",
+                    section.html_content,
+                    re.IGNORECASE,
+                )
+                if notes_match:
+                    notes_start = notes_match.start()
 
+            if notes_start is not None:
                 # Split: Item 8 (financial statements) and Notes
                 item8_content = section.html_content[:notes_start]
                 notes_content = section.html_content[notes_start:]
+
+                original_end = section.end_position
 
                 # Update Item 8 section
                 section.html_content = item8_content
@@ -332,7 +381,7 @@ class SectionSplitter:
                     content_type="notes",
                     html_content=notes_content,
                     start_position=section.start_position + notes_start,
-                    end_position=section.start_position + len(section.html_content) + len(notes_content),
+                    end_position=original_end,
                 )
                 result.append(notes_section)
             else:
@@ -347,42 +396,71 @@ class SectionSplitter:
     ) -> None:
         """Associate extracted tables with their parent sections.
 
-        Uses position overlap to determine which section each table belongs to.
-        Since we don't have exact table positions in the cleaned HTML,
-        we use a text-matching heuristic.
+        Uses exact position overlap (position_in_doc) when available,
+        falling back to title matching and content fingerprinting.
 
         Args:
             sections: List of sections to associate tables with.
             tables: List of extracted tables.
         """
+        # 0. Exact data-table-placeholder matching if present in section HTML
         for table in tables:
-            # Find which section contains this table's content
-            # Use first 100 chars of table content as a fingerprint
-            fingerprint = table.content[:100] if table.content else ""
-            if not fingerprint:
-                continue
-
+            placeholder_tag = f'data-table-placeholder="{table.table_id}"'
             for section in sections:
-                # Check if the table title or content fragment appears
-                # in this section's HTML
-                if (
-                    table.title
-                    and table.title in section.html_content
-                ):
-                    section.tables.append(table)
-                    break
-                # Fallback: check raw text overlap
-                table_text = re.sub(r"[|\-\s]+", "", fingerprint)
-                section_text = re.sub(
-                    r"<[^>]+>", "", section.html_content[:5000]
-                )
-                if table_text[:50] in section_text:
-                    section.tables.append(table)
-                    break
-            else:
-                # If no section matched, assign to the last
-                # financial_statements section
-                for section in reversed(sections):
-                    if section.content_type == "financial_statements":
+                if placeholder_tag in section.html_content:
+                    if table not in section.tables:
                         section.tables.append(table)
+                    break
+
+        # Check which tables are already matched
+        matched_table_ids = {t.table_id for s in sections for t in s.tables}
+        remaining_tables = [t for t in tables if t.table_id not in matched_table_ids]
+
+        for table in remaining_tables:
+            # 1. Exact position matching if position_in_doc is known
+            if table.position_in_doc > 0:
+                matched = False
+                for section in sections:
+                    if (
+                        section.start_position
+                        <= table.position_in_doc
+                        < section.end_position
+                    ):
+                        section.tables.append(table)
+                        matched = True
                         break
+                if matched:
+                    continue
+
+            # 2. Match by title in section HTML content
+            if table.title:
+                matched = False
+                for section in sections:
+                    if table.title in section.html_content:
+                        section.tables.append(table)
+                        matched = True
+                        break
+                if matched:
+                    continue
+
+            # 3. Match by content fingerprint
+            fingerprint = table.content[:100] if table.content else ""
+            if fingerprint:
+                table_text = re.sub(r"[|\-\s]+", "", fingerprint)[:50]
+                matched = False
+                for section in sections:
+                    section_text = re.sub(
+                        r"<[^>]+>", "", section.html_content[:10000]
+                    )
+                    if table_text in section_text:
+                        section.tables.append(table)
+                        matched = True
+                        break
+                if matched:
+                    continue
+
+            # 4. Fallback: assign to the last financial_statements section
+            for section in reversed(sections):
+                if section.content_type == "financial_statements":
+                    section.tables.append(table)
+                    break

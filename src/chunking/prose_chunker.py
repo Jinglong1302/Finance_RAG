@@ -51,6 +51,8 @@ class ProseChunker:
         self.overlap_tokens = int(target_tokens * overlap_ratio)
         self.max_tokens = int(target_tokens * 1.5)  # Allow 50% overflow
 
+    CHECKBOX_CHARS: set[str] = set("\u2610\u2611\u2612\u25a2\u25a0☒☐☑")
+
     def chunk(
         self,
         section_html: str,
@@ -71,21 +73,52 @@ class ProseChunker:
         Returns:
             List of Chunk objects.
         """
-        # Extract paragraphs from HTML
         paragraphs = self._extract_paragraphs(section_html)
-
         if not paragraphs:
             return []
 
-        # Build chunks from paragraphs
-        raw_chunks = self._build_chunks_from_paragraphs(paragraphs)
+        chunks = self.chunk_paragraphs(
+            paragraphs=paragraphs,
+            section_id=section_id,
+            section_name=section_name,
+            filing_meta=filing_meta,
+        )
 
-        # Apply overlap
+        logger.info(
+            f"Chunked {section_id}: {len(paragraphs)} paragraphs → "
+            f"{len(chunks)} chunks (avg {sum(c.metadata.token_count for c in chunks) // max(len(chunks), 1)} tokens)"
+        )
+        return chunks
+
+    def chunk_paragraphs(
+        self,
+        paragraphs: list[str],
+        section_id: str,
+        section_name: str,
+        filing_meta: dict,
+        start_idx: int = 0,
+    ) -> list[Chunk]:
+        """Chunk a pre-extracted list of paragraphs into target-sized segments.
+
+        Args:
+            paragraphs: List of paragraph text strings.
+            section_id: Section identifier (e.g., "item7_mda").
+            section_name: Human-readable section name.
+            filing_meta: Filing metadata dict.
+            start_idx: Starting index for chunk ID numbering.
+
+        Returns:
+            List of Chunk objects.
+        """
+        if not paragraphs:
+            return []
+
+        raw_chunks = self._build_chunks_from_paragraphs(paragraphs)
         overlapped_chunks = self._apply_overlap(raw_chunks)
 
-        # Create Chunk objects with metadata
         chunks: list[Chunk] = []
-        for idx, text in enumerate(overlapped_chunks):
+        for offset, text in enumerate(overlapped_chunks):
+            idx = start_idx + offset
             chunk_id = (
                 f"{filing_meta['company_ticker']}_"
                 f"{filing_meta['filing_type']}_"
@@ -93,9 +126,7 @@ class ProseChunker:
                 f"{section_id}_prose_{idx}"
             )
 
-            # Detect footnote references
             note_refs = self._detect_note_references(text)
-
             token_count = count_tokens(text)
 
             metadata = ChunkMetadata(
@@ -112,20 +143,17 @@ class ProseChunker:
                 token_count=token_count,
                 content_type="prose",
             )
-
             chunks.append(Chunk(chunk_id=chunk_id, text=text, metadata=metadata))
 
-        logger.info(
-            f"Chunked {section_id}: {len(paragraphs)} paragraphs → "
-            f"{len(chunks)} chunks (avg {sum(c.metadata.token_count for c in chunks) // max(len(chunks), 1)} tokens)"
-        )
         return chunks
 
     def _extract_paragraphs(self, html: str) -> list[str]:
-        """Extract text paragraphs from HTML.
+        """Extract paragraph text strings from section HTML.
 
-        Uses <p> tags as primary delimiter. Falls back to
-        double-newline splitting for plain text.
+        Strips non-content tags. Extracts paragraphs from leaf block
+        elements (p, div, headings) and double newlines, preserving
+        checkboxes and merging short checkbox lines with their preceding statements.
+        Filters out running headers/footers and noise fragments.
 
         Args:
             html: Section HTML content.
@@ -135,30 +163,44 @@ class ProseChunker:
         """
         soup = BeautifulSoup(html, "lxml")
 
-        # Remove tables (they're handled by TableChunker)
-        for table in soup.find_all("table"):
-            table.decompose()
+        # Remove tables (they're handled by TableChunker) and non-content tags
+        for tag in soup.find_all(["table", "script", "style", "ix:header", "ix:hidden"]):
+            tag.decompose()
 
-        # Try <p> tag extraction first
-        p_tags = soup.find_all("p")
-        if p_tags:
-            paragraphs = []
-            for p in p_tags:
-                text = p.get_text(separator=" ", strip=True)
-                # Clean up whitespace
-                text = re.sub(r"\s+", " ", text).strip()
-                if text and len(text) > 10:  # Skip very short fragments
-                    paragraphs.append(text)
-            if paragraphs:
-                return paragraphs
+        # Extract leaf block elements
+        raw_paras: list[str] = []
+        for el in soup.find_all(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6"]):
+            # Skip if element contains child block elements (we want innermost/leaf blocks)
+            if el.find(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6"]):
+                continue
+            t = el.get_text(separator=" ", strip=True)
+            t = re.sub(r"\s+", " ", t).strip()
+            if t:
+                raw_paras.append(t)
 
-        # Fallback: split on double newlines
-        text = soup.get_text(separator="\n")
-        paragraphs = []
-        for para in re.split(r"\n\s*\n", text):
-            para = re.sub(r"\s+", " ", para).strip()
-            if para and len(para) > 10:
-                paragraphs.append(para)
+        # Fallback if no block tags found
+        if not raw_paras:
+            text = soup.get_text(separator="\n")
+            for para in re.split(r"\n\s*\n+", text):
+                para = re.sub(r"\s+", " ", para).strip()
+                if para:
+                    raw_paras.append(para)
+
+        # Process paragraphs: preserve checkboxes and merge short checkbox lines
+        paragraphs: list[str] = []
+        for p in raw_paras:
+            has_checkbox = any(c in self.CHECKBOX_CHARS for c in p)
+            # If it's a short checkbox answer (e.g. "Yes ☒ No ☐" or "☒"), merge into preceding statement
+            if has_checkbox and len(p) <= 30 and paragraphs:
+                paragraphs[-1] = f"{paragraphs[-1]}  {p}"
+                continue
+            # Skip empty or very short non-checkbox fragments
+            if len(p) <= 10 and not has_checkbox:
+                continue
+            # Filter running headers/footers (e.g., "Apple Inc. | 2023 Form 10-K | 12")
+            if re.match(r"^.+?\s*\|\s*\d{4}\s+form\s+10-k\s*\|\s*\d+$", p, re.IGNORECASE):
+                continue
+            paragraphs.append(p)
 
         return paragraphs
 

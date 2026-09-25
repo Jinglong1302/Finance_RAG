@@ -91,3 +91,23 @@ class TestHTMLParser:
         """
         cleaned = self.parser.clean_html(html)
         assert "xmlns" not in cleaned
+
+    def test_decomposes_xbrl_header_and_taxonomy(self) -> None:
+        """Test that non-visual XBRL header and hidden tags are completely decomposed."""
+        html = """
+        <html><body>
+        <ix:header>
+            <ix:hidden>
+                <ix:nonNumeric name="dei:DocumentType">10-K</ix:nonNumeric>
+            </ix:hidden>
+            <link:schemaRef xlink:href="http://fasb.org/us-gaap/2023"/>
+            <xbrli:context id="FY2023"><xbrli:entity>0000320193</xbrli:entity></xbrli:context>
+        </ix:header>
+        <p>Visible narrative prose text here.</p>
+        </body></html>
+        """
+        cleaned = self.parser.clean_html(html)
+        assert "Visible narrative prose text here." in cleaned
+        assert "http://fasb.org/us-gaap/2023" not in cleaned
+        assert "0000320193" not in cleaned
+        assert "dei:DocumentType" not in cleaned

@@ -34,6 +34,7 @@ class ChunkMetadata(BaseModel):
         default=None, description="Parent chunk ID for child-to-parent linking"
     )
     chunk_id: str = Field(description="Unique chunk identifier")
+    chunk_index: int = Field(default=0, description="Sequential document order index")
     referenced_notes: list[str] = Field(
         default_factory=list,
         description="Note references found in text, e.g. ['Note 2', 'Note 12']",
