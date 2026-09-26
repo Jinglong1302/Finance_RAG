@@ -305,7 +305,7 @@ def main() -> None:
     naive_classes: list[str] = []
 
     for i, (sample, ticker) in enumerate(limited_pairs):
-        is_idx = check_filing_indexed(qdrant, settings.qdrant_collection, ticker, sample.doc_period)
+        is_idx = check_filing_indexed(qdrant, settings.qdrant_collection, ticker, sample.doc_period, getattr(sample, "doc_name", "") or "")
         indexed_flags.append(is_idx)
 
         c_raw = crag_raw[i] if i < len(crag_raw) else ""
