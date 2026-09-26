@@ -13,7 +13,7 @@ def _format_quote(text: str) -> str:
     lines = text.strip().split("\n")
     return "\n".join(f"> {line}" for line in lines)
 
-def main():
+def main() -> None:
     root = Path(__file__).parent.parent.parent
     eval_dir = root / "results" / "eval"
 
