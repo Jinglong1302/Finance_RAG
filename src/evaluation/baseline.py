@@ -146,10 +146,17 @@ class NaiveRAG:
                 {"prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0},
             )
 
+        latency_s = round(time.perf_counter() - t0, 3)
+        logger.info(
+            f"Naive RAG complete: latency={latency_s}s, cost=${cost:.5f}, "
+            f"prompt_tokens={token_detail['prompt_tokens']}, "
+            f"completion_tokens={token_detail['completion_tokens']}"
+        )
+
         return {
             "answer": answer,
             "chunks": chunks,
-            "latency_s": round(time.perf_counter() - t0, 3),
+            "latency_s": latency_s,
             "cost_usd": cost,
             "token_detail": token_detail,
             "pipeline": "naive_rag",

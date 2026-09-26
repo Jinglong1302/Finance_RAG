@@ -6,6 +6,7 @@ the Corrective RAG state machine with self-correction loops.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from langgraph.graph import END, StateGraph
@@ -242,10 +243,14 @@ def run_query(graph: Any, query: str) -> dict[str, Any]:
         "pipeline_trace": [],
     }
 
+    start_t = time.perf_counter()
     logger.info(f"Running CRAG pipeline: '{query[:80]}...'")
 
     # Execute the graph
     result = graph.invoke(initial_state)
+
+    latency_s = round(time.perf_counter() - start_t, 3)
+    result["latency_s"] = latency_s
 
     # Log summary
     final_answer = result.get("final_answer") or result.get("generation", "")
@@ -255,7 +260,7 @@ def run_query(graph: Any, query: str) -> dict[str, Any]:
 
     logger.info(
         f"Pipeline complete: confidence={confidence}, "
-        f"cycles={cycles}, cost=${cost:.4f}, "
+        f"cycles={cycles}, cost=${cost:.4f}, latency={latency_s}s, "
         f"answer_length={len(final_answer)}"
     )
 
