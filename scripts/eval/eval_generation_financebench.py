@@ -334,6 +334,14 @@ def main() -> None:
         "naive": {
             "numeric_accuracy": naive_numeric.get("accuracy", 0.0) if naive_numeric else None,
             "avg_latency_s": naive_latency / max(len(naive_preds), 1) if naive_preds else None,
+            "per_question": [
+                {
+                    "question": crag_ragas["question"][i] if i < len(crag_ragas["question"]) else "",
+                    "ground_truth": crag_ragas["ground_truth"][i] if i < len(crag_ragas["ground_truth"]) else "",
+                    "answer": naive_preds[i] if i < len(naive_preds) else "",
+                }
+                for i in range(len(naive_preds))
+            ],
         },
     }
     out_file = out / f"generation_fb_{ts}.json"
