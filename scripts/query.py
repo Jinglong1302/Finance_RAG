@@ -49,14 +49,15 @@ def main() -> None:
     parser.add_argument("--interactive", "-i", action="store_true", help="Interactive mode")
     parser.add_argument("--report", "-r", action="store_true",
                         help="Print detailed pipeline trace after each query")
+    parser.add_argument("--naive", "--baseline", action="store_true", dest="naive",
+                        help="Run Naive RAG baseline instead of CRAG")
+    parser.add_argument("--ticker", default=None, help="Optional ticker filter (e.g. AAPL, MMM, BA, KO, NFLX, PFE)")
+    parser.add_argument("--top-k", type=int, default=5, help="Number of chunks to retrieve for Naive RAG (default: 5)")
     parser.add_argument("--log-level", default="WARNING", help="Log level")
     args = parser.parse_args()
 
     setup_logging(args.log_level)
     settings = get_settings()
-
-    # Initialize components
-    console.print("[bold cyan]Initializing Finance RAG...[/bold cyan]")
 
     qdrant_client = QdrantClient(
         url=settings.qdrant_url,
@@ -66,6 +67,30 @@ def main() -> None:
         model_name=settings.embedding_model,
         use_fp16=settings.use_fp16,
     )
+
+    if args.naive:
+        console.print("[bold yellow]Running in Naive RAG Mode (Dense-only, no reranker, no loops)[/bold yellow]\n")
+        from src.evaluation.baseline import NaiveRAG
+        from scripts.query_baseline import run_baseline_query, run_interactive as run_baseline_interactive
+
+        baseline = NaiveRAG(
+            qdrant_client=qdrant_client,
+            embedder=embedder,
+            collection_name=settings.qdrant_collection,
+            openai_model=settings.openai_model,
+            top_k=args.top_k,
+        )
+        if args.query:
+            run_baseline_query(baseline, args.query, ticker=args.ticker)
+        elif args.interactive:
+            run_baseline_interactive(baseline)
+        else:
+            parser.print_help()
+        return
+
+    # Initialize components for CRAG
+    console.print("[bold cyan]Initializing Finance RAG...[/bold cyan]")
+
     searcher = HybridSearcher(
         client=qdrant_client,
         embedder=embedder,
