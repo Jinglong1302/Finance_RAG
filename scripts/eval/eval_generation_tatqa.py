@@ -124,19 +124,59 @@ def load_tatqa_samples(n: int = 50, seed: int = 42) -> list[dict]:
     return flat[:n]
 
 
-def _generate_with_context(
+from src.orchestration.nodes.generator import generator_node
+from src.orchestration.nodes.hallucination_guard import hallucination_guard_node
+from src.orchestration.state import CRAGState
+
+_NAIVE_SYSTEM_PROMPT = (
+    "You are a financial analyst assistant. Answer the question based ONLY on "
+    "the provided context. If the context does not contain enough information, "
+    "say 'Insufficient information in context.'"
+)
+
+
+def _generate_crag(question: str, context: str) -> tuple[str, float]:
+    """CRAG generation path: generator_node (citations, step-by-step arithmetic, structured JSON) + hallucination_guard_node."""
+    t0 = time.perf_counter()
+    ctx_dict = {
+        "child_text": context,
+        "parent_text": context,
+        "metadata": {
+            "company_ticker": "TAT-QA",
+            "section_title": "Financial Table and Statement Context",
+            "fiscal_year": "N/A",
+            "filing_type": "Report",
+        },
+    }
+    state: CRAGState = {
+        "original_query": question,
+        "enriched_contexts": [ctx_dict],
+        "confidence": "high",
+        "cost_accumulated": 0.0,
+    }
+    try:
+        gen_out = generator_node(state)
+        state.update(gen_out)
+        guard_out = hallucination_guard_node(state)
+        answer = guard_out.get("final_answer") or state.get("generation", "")
+    except Exception as e:
+        answer = f"Error: {e}"
+    return answer, round(time.perf_counter() - t0, 3)
+
+
+def _generate_naive(
     question: str, context: str, llm: OpenAI, model: str
 ) -> tuple[str, float]:
-    """Call LLM with bundled context. Returns (answer, latency_s)."""
+    """Naive baseline path: direct conversational prompt without structured blocks or hallucination checks."""
     t0 = time.perf_counter()
     try:
         resp = llm.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "system", "content": _NAIVE_SYSTEM_PROMPT},
                 {
                     "role": "user",
-                    "content": f"{context}\n\nQuestion: {question}",
+                    "content": f"Context:\n{context}\n\nQuestion: {question}",
                 },
             ],
             temperature=0,
@@ -177,30 +217,31 @@ def main() -> None:
 
     llm = OpenAI()
 
-    # Both CRAG generator and naive generator use identical LLM + context here
-    # (No retrieval; the point is to measure generation/arithmetic quality)
+    # Two distinct generation paths:
+    # 1. CRAG: generator_node with structured prompt + step-by-step arithmetic + hallucination guardrail
+    # 2. Naive: baseline prompt with direct answer without guardrails
     crag_preds: list[str] = []
     naive_preds: list[str] = []
     gts = [s["answer_str"] for s in samples]
     crag_latencies: list[float] = []
+    naive_latencies: list[float] = []
 
-    console.print("\n[bold]Running generation (same context, GPT-4o)...[/bold]")
+    console.print("\n[bold]Running CRAG generation path (generator_node + guardrail)...[/bold]")
     for i, s in enumerate(samples):
-        pred, lat = _generate_with_context(
-            s["question"], s["context"], llm, settings.openai_model
-        )
+        pred, lat = _generate_crag(s["question"], s["context"])
         crag_preds.append(pred)
         crag_latencies.append(lat)
-        console.print(f"  Q{i+1:03d}: {lat:.1f}s | pred={pred[:60]}")
+        console.print(f"  CRAG Q{i+1:03d}: {lat:.1f}s | pred={pred[:60]}")
 
-    # For baseline, use same call (context-injected; naive has no retrieval advantage here)
-    # We re-run to measure determinism — temperature=0 so identical, but we track separately
     if not args.no_baseline:
-        for s in samples:
-            pred, _ = _generate_with_context(
+        console.print("\n[bold]Running Naive generation path (baseline prompt)...[/bold]")
+        for i, s in enumerate(samples):
+            pred, lat = _generate_naive(
                 s["question"], s["context"], llm, settings.openai_model
             )
             naive_preds.append(pred)
+            naive_latencies.append(lat)
+            console.print(f"  Naive Q{i+1:03d}: {lat:.1f}s | pred={pred[:60]}")
 
     # Metrics
     crag_em = exact_match_rate(crag_preds, gts)
@@ -243,7 +284,7 @@ def main() -> None:
     naive_vals = [
         f"{naive_em:.3f}" if naive_em is not None else "n/a",
         f"{naive_numeric.get('accuracy',0):.3f}" if naive_numeric else "n/a",
-        "~same",
+        f"{sum(naive_latencies)/len(naive_latencies):.1f}" if naive_latencies else "n/a",
     ]
     for i, (metric, cval) in enumerate(row_pairs):
         row = [metric, cval]
@@ -269,11 +310,13 @@ def main() -> None:
         "naive": {
             "exact_match": naive_em,
             "numeric_accuracy": naive_numeric.get("accuracy", 0.0) if naive_numeric else None,
+            "avg_latency_s": sum(naive_latencies) / len(naive_latencies) if naive_latencies else None,
             "per_question": [
                 {
                     "question": s["question"],
                     "ground_truth": s["answer_str"],
                     "answer": naive_preds[i],
+                    "latency_s": naive_latencies[i] if i < len(naive_latencies) else None,
                 }
                 for i, s in enumerate(samples)
             ] if naive_preds else [],
