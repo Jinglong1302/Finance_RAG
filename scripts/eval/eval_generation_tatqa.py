@@ -213,12 +213,15 @@ def main() -> None:
     # Per-question results
     per_q = []
     for i, s in enumerate(samples):
+        n_ans = naive_preds[i] if i < len(naive_preds) else None
         per_q.append(
             {
                 "question": s["question"],
                 "ground_truth": s["answer_str"],
                 "crag_answer": crag_preds[i],
+                "naive_answer": n_ans,
                 "numeric_match": numeric_match(crag_preds[i], s["answer_str"]),
+                "naive_numeric_match": numeric_match(n_ans, s["answer_str"]) if n_ans else None,
                 "derivation": s["derivation"],
                 "answer_type": s["answer_type"],
                 "latency_s": crag_latencies[i],
@@ -266,6 +269,14 @@ def main() -> None:
         "naive": {
             "exact_match": naive_em,
             "numeric_accuracy": naive_numeric.get("accuracy", 0.0) if naive_numeric else None,
+            "per_question": [
+                {
+                    "question": s["question"],
+                    "ground_truth": s["answer_str"],
+                    "answer": naive_preds[i],
+                }
+                for i, s in enumerate(samples)
+            ] if naive_preds else [],
         },
     }
     out_file = out / f"tatqa_{ts}.json"
