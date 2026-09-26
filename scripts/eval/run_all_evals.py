@@ -426,6 +426,18 @@ def _render_markdown(summary: dict, gates: dict[str, bool], ts: str) -> str:
                     f"#### Q{i+1}: {q}",
                     f"",
                     f"**Ground Truth:** `{gt}`",
+                ]
+                f_score = item.get("faithfulness")
+                ar_score = item.get("answer_relevancy")
+                ragas_pills = []
+                if f_score is not None:
+                    ragas_pills.append(f"Faithfulness: `{f_score:.3f}`")
+                if ar_score is not None:
+                    ragas_pills.append(f"Answer Relevancy: `{ar_score:.3f}`")
+                if ragas_pills:
+                    lines += ["", f"**Ragas (CRAG):** {' | '.join(ragas_pills)}"]
+
+                lines += [
                     f"",
                     f"**CRAG Pipeline Answer:**",
                     _format_quote(ans),
