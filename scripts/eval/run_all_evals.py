@@ -110,6 +110,7 @@ def _load_custom_aapl() -> dict[str, Any] | None:
                         "question": row.get("user_input", ""),
                         "ground_truth": row.get("reference", ""),
                         "crag_answer": row.get("response", ""),
+                        "naive_answer": row.get("naive_response", ""),
                         "raw_answer": row.get("raw_answer", ""),
                         "faithfulness": float(row["faithfulness"]) if row.get("faithfulness") else None,
                         "answer_relevancy": float(row["answer_relevancy"]) if row.get("answer_relevancy") else None,
@@ -337,10 +338,52 @@ def _render_markdown(summary: dict, gates: dict[str, bool], ts: str) -> str:
                 n_hit = "✅ 1" if n_item.get("Hit@5") else "❌ 0"
                 c_mrr = f"{item.get('MRR', 0.0):.2f}"
                 n_mrr = f"{n_item.get('MRR', 0.0):.2f}" if n_item else "n/a"
-                q_text = item.get("question", "")[:60] + ("..." if len(item.get("question", "")) > 60 else "")
+                q_text = item.get("question", "")
                 lines.append(
                     f"| {i+1} | `{item.get('ticker', '')}` | {q_text} | {c_hit} | {c_mrr} | {n_hit} | {n_mrr} | {item.get('latency_s', 0):.1f}s |"
                 )
+
+            # Detailed Retrieved Chunks Comparison
+            lines += ["", "### Retrieved Chunks Detail (CRAG vs. Naive RAG)", ""]
+            for i, item in enumerate(pq):
+                n_item = npq[i] if i < len(npq) else {}
+                q_text = item.get("question", "")
+                c_chunks = item.get("retrieved_chunks", [])
+                n_chunks = n_item.get("retrieved_chunks", [])
+
+                lines += [
+                    f"#### Q{i+1}: [{item.get('ticker', '')}] {q_text}",
+                    "",
+                    "**CRAG Retrieved Chunks (Top-5 via Hybrid + Reranker):**",
+                    "",
+                    "| Rank | Page | Section | Score | Match? | Text Preview |",
+                    "| -: | -: | :--- | -: | :---: | :--- |",
+                ]
+                if c_chunks:
+                    for c in c_chunks:
+                        m_icon = "✅ HIT" if c.get("is_hit") else "❌ miss"
+                        lines.append(
+                            f"| {c.get('rank', 0)} | {c.get('page_number', 'N/A')} | {str(c.get('section', 'N/A'))[:35]} | {c.get('score', 0):.4f} | {m_icon} | {c.get('text_preview', '')} |"
+                        )
+                else:
+                    lines.append("| - | - | - | - | - | *(No chunks recorded)* |")
+
+                lines += [
+                    "",
+                    "**Naive RAG Retrieved Chunks (Top-5 via Dense-Only):**",
+                    "",
+                    "| Rank | Page | Section | Score | Match? | Text Preview |",
+                    "| -: | -: | :--- | -: | :---: | :--- |",
+                ]
+                if n_chunks:
+                    for c in n_chunks:
+                        m_icon = "✅ HIT" if c.get("is_hit") else "❌ miss"
+                        lines.append(
+                            f"| {c.get('rank', 0)} | {c.get('page_number', 'N/A')} | {str(c.get('section', 'N/A'))[:35]} | {c.get('score', 0):.4f} | {m_icon} | {c.get('text_preview', '')} |"
+                        )
+                else:
+                    lines.append("| - | - | - | - | - | *(No chunks recorded)* |")
+                lines.append("")
 
     # Slice 2: Generation FinanceBench
     gen_fb = summary.get("generation_financebench", {})
@@ -430,8 +473,14 @@ def _render_markdown(summary: dict, gates: dict[str, bool], ts: str) -> str:
                     f"",
                     f"**CRAG Pipeline Answer:**",
                     _format_quote(item.get("crag_answer", "")),
-                    "",
                 ]
+                if item.get("naive_answer"):
+                    lines += [
+                        f"",
+                        f"**Naive RAG Answer:**",
+                        _format_quote(item.get("naive_answer", "")),
+                    ]
+                lines.append("")
 
     # Slice 3: TAT-QA
     gen_tq = summary.get("generation_tatqa", {})

@@ -96,12 +96,25 @@ def evaluate_one(
     )
     reranked = reranker.rerank(question, candidates, top_k=top_k_rerank)
 
-    result: dict[str, Any] = {"question": question[:80], "ticker": ticker}
+    from src.evaluation.metrics import chunk_matches_evidence
+
+    result: dict[str, Any] = {"question": question, "ticker": ticker}
     for k in (1, 3, 5, 10):
         result[f"Hit@{k}"] = int(hit_at_k(reranked, evidence_list, k))
     result["Recall@5"] = recall_at_k(reranked, evidence_list, 5)
     result["Recall@10"] = recall_at_k(reranked, evidence_list, 10)
     result["MRR"] = mrr(reranked, evidence_list)
+    result["retrieved_chunks"] = [
+        {
+            "rank": rank + 1,
+            "page_number": getattr(c, "metadata", {}).get("page_number") if hasattr(c, "metadata") else c.get("metadata", {}).get("page_number"),
+            "section": (getattr(c, "metadata", {}).get("section_title") or getattr(c, "metadata", {}).get("section_id", "N/A")) if hasattr(c, "metadata") else (c.get("metadata", {}).get("section_title") or c.get("metadata", {}).get("section_id", "N/A")),
+            "score": round(float(getattr(c, "score", 0.0) if hasattr(c, "score") else c.get("score", 0.0)), 4),
+            "text_preview": (getattr(c, "text", "") if hasattr(c, "text") else c.get("text", ""))[:140].replace("\n", " ") + "...",
+            "is_hit": chunk_matches_evidence(c, evidence_list),
+        }
+        for rank, c in enumerate(reranked[:5])
+    ]
     return result
 
 
@@ -115,12 +128,25 @@ def evaluate_one_naive(
     """Dense-only retrieval for one question."""
     chunks = naive.retrieve(question, ticker=ticker)
 
-    result: dict[str, Any] = {"question": question[:80], "ticker": ticker}
+    from src.evaluation.metrics import chunk_matches_evidence
+
+    result: dict[str, Any] = {"question": question, "ticker": ticker}
     for k in (1, 3, 5, 10):
         result[f"Hit@{k}"] = int(hit_at_k(chunks, evidence_list, k))
     result["Recall@5"] = recall_at_k(chunks, evidence_list, 5)
     result["Recall@10"] = recall_at_k(chunks, evidence_list, 10)
     result["MRR"] = mrr(chunks, evidence_list)
+    result["retrieved_chunks"] = [
+        {
+            "rank": rank + 1,
+            "page_number": c.get("metadata", {}).get("page_number") if isinstance(c, dict) else getattr(c, "metadata", {}).get("page_number"),
+            "section": (c.get("metadata", {}).get("section_title") or c.get("metadata", {}).get("section_id", "N/A")) if isinstance(c, dict) else (getattr(c, "metadata", {}).get("section_title") or getattr(c, "metadata", {}).get("section_id", "N/A")),
+            "score": round(float(c.get("score", 0.0) if isinstance(c, dict) else getattr(c, "score", 0.0)), 4),
+            "text_preview": (c.get("text", "") if isinstance(c, dict) else getattr(c, "text", ""))[:140].replace("\n", " ") + "...",
+            "is_hit": chunk_matches_evidence(c, evidence_list),
+        }
+        for rank, c in enumerate(chunks[:5])
+    ]
     return result
 
 
