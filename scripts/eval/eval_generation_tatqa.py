@@ -161,7 +161,7 @@ def exact_match_rate(preds: list[str], gts: list[str]) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="TAT-QA generation evaluation slice")
-    parser.add_argument("--n", type=int, default=50, help="Number of TAT-QA samples (default: 50)")
+    parser.add_argument("--limit", "--n", dest="n", type=int, default=50, help="Number of TAT-QA samples (default: 50)")
     parser.add_argument("--no-baseline", action="store_true")
     parser.add_argument("--output", default="results/eval/generation_tatqa")
     parser.add_argument("--log-level", default="WARNING")
