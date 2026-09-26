@@ -47,8 +47,9 @@ class CRAGState(TypedDict, total=False):
     hallucination_check: str  # "pass" | "fail"
     final_answer: str | None  # Post-guardrail answer
 
-    # === Cost ===
+    # === Cost & Performance ===
     cost_accumulated: float  # Running cost in USD
+    latency_s: float  # Total pipeline latency in seconds
 
     # === Abstention ===
     is_abstention: bool  # True if pipeline abstained

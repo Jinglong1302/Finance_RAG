@@ -32,7 +32,7 @@ def generate_markdown_report(data: dict[str, Any]) -> str:
     confidence = (data.get("confidence") or "UNKNOWN").upper()
     cycles = data.get("cycle_count", 0)
     cost = data.get("cost_accumulated", 0.0)
-    latency = data.get("latency_seconds", 0.0)
+    latency = data.get("latency_s") or data.get("latency_seconds", 0.0)
     guard = (data.get("hallucination_check") or "pass").upper()
     citations = data.get("citations", [])
     metrics = data.get("structured_metrics", [])
@@ -251,7 +251,7 @@ def save_query_report(
         "query": query,
         "confidence": data.get("confidence", "unknown"),
         "cost": data.get("cost_accumulated", 0.0),
-        "latency": data.get("latency_seconds", 0.0),
+        "latency": data.get("latency_s") or data.get("latency_seconds", 0.0),
         "hallucination_check": data.get("hallucination_check", "pass"),
         "citations_count": len(data.get("citations", [])),
         "md_file": str(md_path.relative_to(target_dir.parent.parent)),

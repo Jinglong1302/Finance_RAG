@@ -201,6 +201,7 @@ def _display_result(result: dict) -> None:
 
     # Metadata table
     meta_table = Table(show_header=False, box=None)
+    meta_table.add_row("Latency:", f"{result.get('latency_s', 0.0):.2f}s")
     meta_table.add_row("CRAG Cycles:", str(cycles))
     meta_table.add_row("API Cost:", f"${cost:.4f}")
     meta_table.add_row("Citations:", str(len(result.get("citations", []))))
