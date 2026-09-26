@@ -30,8 +30,14 @@ logger = get_logger(__name__)
 
 
 def build_page_index(html_content: str) -> list[int]:
-    """Find character offsets of all page break indicators in the HTML."""
-    return [m.start() for m in re.finditer(r"<hr|page-break", html_content, re.IGNORECASE)]
+    """Find character offsets of all page break indicators in the HTML.
+    
+    Uses <hr> tags without double-counting nested page-break CSS properties.
+    """
+    hr_matches = [m.start() for m in re.finditer(r"<hr\b", html_content, re.IGNORECASE)]
+    if hr_matches:
+        return hr_matches
+    return [m.start() for m in re.finditer(r"page-break-(?:before|after)", html_content, re.IGNORECASE)]
 
 
 def find_chunk_page(
@@ -40,26 +46,32 @@ def find_chunk_page(
     page_break_offsets: list[int],
 ) -> int | None:
     """Find the source page number of a chunk within the raw HTML."""
-    words = [w for w in re.findall(r"\w+", chunk_text) if len(w) >= 4]
-    if len(words) < 2:
-        words = re.findall(r"\w+", chunk_text)
+    words = [w for w in re.findall(r"[a-zA-Z]{3,}", chunk_text)]
     if not words:
         return None
 
-    # Try matching first two salient words
-    for step in range(min(3, len(words) - 1)):
-        w1 = words[step]
-        w2 = words[step + 1]
-        pattern = re.escape(w1) + r".{0,100}" + re.escape(w2)
-        m = re.search(pattern, raw_content, re.IGNORECASE)
+    # 1. Search for consecutive windows of 4 salient words across HTML tags
+    for i in range(min(5, max(1, len(words) - 3))):
+        sub_words = words[i : i + 4]
+        pat = r".{0,60}".join(re.escape(w) for w in sub_words)
+        m = re.search(pat, raw_content, re.IGNORECASE)
         if m:
             return bisect_right(page_break_offsets, m.start())
 
-    # Fallback to single salient word
-    for w in words[:3]:
-        idx = raw_content.lower().find(w.lower())
-        if idx != -1:
-            return bisect_right(page_break_offsets, idx)
+    # 2. Try distinctive non-markdown lines from chunk_text
+    for line in chunk_text.splitlines():
+        line = line.strip()
+        if len(line) >= 25 and not line.startswith(("#", "|")):
+            idx = raw_content.find(line[:50])
+            if idx != -1:
+                return bisect_right(page_break_offsets, idx)
+
+    # 3. Fallback to first 3 salient words
+    if len(words) >= 3:
+        pat = r".{0,80}".join(re.escape(w) for w in words[:3])
+        m = re.search(pat, raw_content, re.IGNORECASE)
+        if m:
+            return bisect_right(page_break_offsets, m.start())
 
     return None
 
@@ -71,6 +83,7 @@ def tag_filing_chunks(
     fiscal_year: int,
     filing_type: str,
     html_path: Path,
+    force: bool = False,
 ) -> int:
     """Tag all chunks of a specific filing with their source page number."""
     if not html_path.exists():
@@ -110,8 +123,8 @@ def tag_filing_chunks(
 
         for p in pts:
             total += 1
-            # If page_number is already set, skip
-            if p.payload.get("page_number") is not None:
+            # If page_number is already set and not forced, skip
+            if not force and p.payload.get("page_number") is not None:
                 tagged += 1
                 continue
 
@@ -136,6 +149,7 @@ def tag_filing_chunks(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Tag source page numbers onto Qdrant chunks")
     parser.add_argument("--ticker", default=None, help="Filter by ticker")
+    parser.add_argument("--force", action="store_true", help="Re-compute and overwrite existing page numbers")
     parser.add_argument("--log-level", default="INFO", help="Log level")
     args = parser.parse_args()
 
@@ -168,6 +182,7 @@ def main() -> None:
                     fiscal_year=f.fiscal_year,
                     filing_type=form,
                     html_path=f.file_path,
+                    force=args.force,
                 )
                 total_tagged += tagged
 

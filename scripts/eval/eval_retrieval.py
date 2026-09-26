@@ -79,6 +79,27 @@ def load_in_corpus_financebench() -> list[dict]:
     return [r for r in rows if r.get("company", "") in IN_CORPUS_COMPANIES]
 
 
+def check_filing_indexed(client: Any, collection_name: str, ticker: str, fiscal_year: Any, doc_name: str) -> bool:
+    """Audit whether the required filing is indexed in Qdrant."""
+    if not fiscal_year:
+        return True
+    try:
+        fy_int = int(fiscal_year)
+    except (ValueError, TypeError):
+        return True
+    form = "10-Q" if ("10Q" in doc_name.upper() or "10-Q" in doc_name.upper()) else "10-K"
+    from qdrant_client.models import FieldCondition, Filter, MatchValue
+    flt = Filter(
+        must=[
+            FieldCondition(key="company_ticker", match=MatchValue(value=ticker)),
+            FieldCondition(key="fiscal_year", match=MatchValue(value=fy_int)),
+            FieldCondition(key="filing_type", match=MatchValue(value=form)),
+        ]
+    )
+    records, _ = client.scroll(collection_name=collection_name, scroll_filter=flt, limit=1)
+    return len(records) > 0
+
+
 def evaluate_one(
     question: str,
     evidence_list: Sequence[dict[str, Any] | str],
@@ -99,7 +120,7 @@ def evaluate_one(
     else:
         reranked = candidates[:top_k_rerank]
 
-    from src.evaluation.metrics import chunk_matches_evidence
+    from src.evaluation.metrics import check_chunk_evidence_detailed, hit_at_k, mrr, recall_at_k
 
     result: dict[str, Any] = {"question": question, "ticker": ticker}
     for k in (1, 3, 5, 10):
@@ -107,17 +128,31 @@ def evaluate_one(
     result["Recall@5"] = recall_at_k(reranked, evidence_list, 5)
     result["Recall@10"] = recall_at_k(reranked, evidence_list, 10)
     result["MRR"] = mrr(reranked, evidence_list)
-    result["retrieved_chunks"] = [
-        {
+
+    chunks_diag = []
+    for rank, c in enumerate(reranked[:5]):
+        details = [check_chunk_evidence_detailed(c, ev) for ev in evidence_list]
+        is_hit = any(d["is_hit"] for d in details)
+        page_match = any(d["page_match"] for d in details)
+        overlap_match = any(d["overlap_match"] for d in details)
+        max_overlap = max((d["overlap_ratio"] for d in details), default=0.0)
+        pg_num = getattr(c, "metadata", {}).get("page_number") if hasattr(c, "metadata") else c.get("metadata", {}).get("page_number")
+        sec = (getattr(c, "metadata", {}).get("section_title") or getattr(c, "metadata", {}).get("section_id", "N/A")) if hasattr(c, "metadata") else (c.get("metadata", {}).get("section_title") or c.get("metadata", {}).get("section_id", "N/A"))
+        sc = round(float(getattr(c, "score", 0.0) if hasattr(c, "score") else c.get("score", 0.0)), 4)
+        txt = (getattr(c, "text", "") if hasattr(c, "text") else c.get("text", ""))[:140].replace("\n", " ") + "..."
+
+        chunks_diag.append({
             "rank": rank + 1,
-            "page_number": getattr(c, "metadata", {}).get("page_number") if hasattr(c, "metadata") else c.get("metadata", {}).get("page_number"),
-            "section": (getattr(c, "metadata", {}).get("section_title") or getattr(c, "metadata", {}).get("section_id", "N/A")) if hasattr(c, "metadata") else (c.get("metadata", {}).get("section_title") or c.get("metadata", {}).get("section_id", "N/A")),
-            "score": round(float(getattr(c, "score", 0.0) if hasattr(c, "score") else c.get("score", 0.0)), 4),
-            "text_preview": (getattr(c, "text", "") if hasattr(c, "text") else c.get("text", ""))[:140].replace("\n", " ") + "...",
-            "is_hit": chunk_matches_evidence(c, evidence_list),
-        }
-        for rank, c in enumerate(reranked[:5])
-    ]
+            "page_number": pg_num,
+            "section": sec,
+            "score": sc,
+            "text_preview": txt,
+            "is_hit": is_hit,
+            "page_match": page_match,
+            "overlap_match": overlap_match,
+            "overlap_ratio": max_overlap,
+        })
+    result["retrieved_chunks"] = chunks_diag
     return result
 
 
@@ -131,7 +166,7 @@ def evaluate_one_naive(
     """Dense-only retrieval for one question."""
     chunks = naive.retrieve(question, ticker=ticker)
 
-    from src.evaluation.metrics import chunk_matches_evidence
+    from src.evaluation.metrics import check_chunk_evidence_detailed, hit_at_k, mrr, recall_at_k
 
     result: dict[str, Any] = {"question": question, "ticker": ticker}
     for k in (1, 3, 5, 10):
@@ -139,17 +174,31 @@ def evaluate_one_naive(
     result["Recall@5"] = recall_at_k(chunks, evidence_list, 5)
     result["Recall@10"] = recall_at_k(chunks, evidence_list, 10)
     result["MRR"] = mrr(chunks, evidence_list)
-    result["retrieved_chunks"] = [
-        {
+
+    chunks_diag = []
+    for rank, c in enumerate(chunks[:5]):
+        details = [check_chunk_evidence_detailed(c, ev) for ev in evidence_list]
+        is_hit = any(d["is_hit"] for d in details)
+        page_match = any(d["page_match"] for d in details)
+        overlap_match = any(d["overlap_match"] for d in details)
+        max_overlap = max((d["overlap_ratio"] for d in details), default=0.0)
+        pg_num = c.get("metadata", {}).get("page_number") if isinstance(c, dict) else getattr(c, "metadata", {}).get("page_number")
+        sec = (c.get("metadata", {}).get("section_title") or c.get("metadata", {}).get("section_id", "N/A")) if isinstance(c, dict) else (getattr(c, "metadata", {}).get("section_title") or getattr(c, "metadata", {}).get("section_id", "N/A"))
+        sc = round(float(c.get("score", 0.0) if isinstance(c, dict) else getattr(c, "score", 0.0)), 4)
+        txt = (c.get("text", "") if isinstance(c, dict) else getattr(c, "text", ""))[:140].replace("\n", " ") + "..."
+
+        chunks_diag.append({
             "rank": rank + 1,
-            "page_number": c.get("metadata", {}).get("page_number") if isinstance(c, dict) else getattr(c, "metadata", {}).get("page_number"),
-            "section": (c.get("metadata", {}).get("section_title") or c.get("metadata", {}).get("section_id", "N/A")) if isinstance(c, dict) else (getattr(c, "metadata", {}).get("section_title") or getattr(c, "metadata", {}).get("section_id", "N/A")),
-            "score": round(float(c.get("score", 0.0) if isinstance(c, dict) else getattr(c, "score", 0.0)), 4),
-            "text_preview": (c.get("text", "") if isinstance(c, dict) else getattr(c, "text", ""))[:140].replace("\n", " ") + "...",
-            "is_hit": chunk_matches_evidence(c, evidence_list),
-        }
-        for rank, c in enumerate(chunks[:5])
-    ]
+            "page_number": pg_num,
+            "section": sec,
+            "score": sc,
+            "text_preview": txt,
+            "is_hit": is_hit,
+            "page_match": page_match,
+            "overlap_match": overlap_match,
+            "overlap_ratio": max_overlap,
+        })
+    result["retrieved_chunks"] = chunks_diag
     return result
 
 
@@ -220,6 +269,13 @@ def main() -> None:
 
         if not evidence_entries:
             console.print(f"[dim]  Q{i+1}: no evidence, skipping[/dim]")
+            continue
+
+        # Filing audit: check if required fiscal year is indexed
+        doc_period = row.get("doc_period")
+        doc_name = row.get("doc_name", "")
+        if not check_filing_indexed(qdrant, settings.qdrant_collection, ticker, doc_period, doc_name):
+            console.print(f"[yellow]  Q{i+1:02d} [{ticker}]: excluded: fiscal year not indexed ({doc_name})[/yellow]")
             continue
 
         # CRAG retrieval

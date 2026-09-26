@@ -69,24 +69,30 @@ def numeric_match(
     Returns:
         True if numbers match within tolerance.
     """
+    def _is_close(val: float, target: float) -> bool:
+        if abs(target) < 1e-9:
+            return abs(val) < 1e-9
+        diff = abs(val - target) / abs(target)
+        if diff <= tolerance:
+            return True
+        # Check scale multipliers (k, m, b) when one answer includes unit multiplier and other omitted it
+        for scale in (1e3, 1e6, 1e9, 1e-3, 1e-6, 1e-9):
+            scaled_target = target * scale
+            if abs(val - scaled_target) / abs(scaled_target) <= tolerance:
+                return True
+        return False
+
     exp_num = parse_financial_number(expected)
     if exp_num is None:
         return False
 
     pred_num = parse_financial_number(predicted)
-    if pred_num is not None:
-        if abs(exp_num) < 1e-9:
-            if abs(pred_num) < 1e-9:
-                return True
-        elif abs(pred_num - exp_num) / abs(exp_num) <= tolerance:
-            return True
+    if pred_num is not None and _is_close(pred_num, exp_num):
+        return True
 
     # Fallback: scan candidate numbers in predicted text (useful when answer contains reasoning/citations)
     for cand in extract_numbers(predicted):
-        if abs(exp_num) < 1e-9:
-            if abs(cand) < 1e-9:
-                return True
-        elif abs(cand - exp_num) / abs(exp_num) <= tolerance:
+        if _is_close(cand, exp_num):
             return True
 
     return False

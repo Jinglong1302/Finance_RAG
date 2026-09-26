@@ -190,6 +190,7 @@ def main() -> None:
                 "company": company,
                 "answer_preview": answer[:120],
                 "classification": classification,
+                "qa_classification": "abstained-correctly-real-gap" if classification == "abstain" else "answered-incorrect",
                 "refused": refused,
                 "latency_s": latency,
             }
@@ -212,6 +213,7 @@ def main() -> None:
                     "company": company,
                     "answer_preview": nres["answer"][:120],
                     "classification": n_class,
+                    "qa_classification": "abstained-correctly-real-gap" if n_class == "abstain" else "answered-incorrect",
                     "refused": n_refused,
                     "latency_s": round(time.perf_counter() - t0, 3),
                 }
@@ -232,6 +234,10 @@ def main() -> None:
         naive_hedge = sum(1 for r in naive_results if r["classification"] == "hedge") / nn
         naive_false_ans = sum(1 for r in naive_results if r["classification"] == "answer") / nn
 
+    from collections import Counter
+    crag_breakdown = dict(Counter(r["qa_classification"] for r in crag_results))
+    naive_breakdown = dict(Counter(r["qa_classification"] for r in naive_results)) if naive_results else {}
+
     # Display
     table = Table(title=f"Abstention & Groundedness Classification (out-of-corpus, n={n})")
     table.add_column("Category / Metric")
@@ -243,11 +249,15 @@ def main() -> None:
         ("Abstain Rate ↑ (Correct refusal)", f"{crag_abstention:.3f}"),
         ("Hedge Rate ~ (Uncertain/warning)", f"{crag_hedge:.3f}"),
         ("False Answer Rate ↓ (Hallucination)", f"{crag_false_ans:.3f}"),
+        ("Abstained Correct (Real Gap)", str(crag_breakdown.get("abstained-correctly-real-gap", 0))),
+        ("Answered Incorrect (False Answer)", str(crag_breakdown.get("answered-incorrect", 0))),
     ]
     naive_display = [
         f"{naive_abstention:.3f}" if naive_abstention is not None else "n/a",
         f"{naive_hedge:.3f}" if naive_hedge is not None else "n/a",
         f"{naive_false_ans:.3f}" if naive_false_ans is not None else "n/a",
+        str(naive_breakdown.get("abstained-correctly-real-gap", 0)) if naive_results else "n/a",
+        str(naive_breakdown.get("answered-incorrect", 0)) if naive_results else "n/a",
     ]
     for i, (metric, cval) in enumerate(rows_display):
         row = [metric, cval]
@@ -267,11 +277,13 @@ def main() -> None:
         "crag": {
             "abstention_rate": crag_abstention,
             "false_answer_rate": crag_false_ans,
+            "classification_breakdown": crag_breakdown,
             "per_question": crag_results,
         },
         "naive": {
             "abstention_rate": naive_abstention,
             "false_answer_rate": naive_false_ans,
+            "classification_breakdown": naive_breakdown,
             "per_question": naive_results,
         },
     }

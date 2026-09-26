@@ -152,10 +152,12 @@ def _build_summary(reports: Mapping[str, Any]) -> dict[str, Any]:
             "crag": {
                 "ragas": crag.get("ragas", {}),
                 "numeric_accuracy": crag.get("numeric_accuracy", 0.0),
+                "classification_breakdown": crag.get("classification_breakdown", {}),
                 "avg_latency_s": crag.get("avg_latency_s", 0.0),
             },
             "naive": {
                 "numeric_accuracy": naive.get("numeric_accuracy"),
+                "classification_breakdown": naive.get("classification_breakdown", {}),
                 "avg_latency_s": naive.get("avg_latency_s"),
             },
             "per_question": crag.get("per_question", []),
@@ -169,13 +171,15 @@ def _build_summary(reports: Mapping[str, Any]) -> dict[str, Any]:
         summary["generation_tatqa"] = {
             "n": gen_tq.get("n_questions", 0),
             "crag": {
-                "exact_match": crag.get("exact_match", 0.0),
                 "numeric_accuracy": crag.get("numeric_accuracy", 0.0),
+                "span_match": crag.get("span_match", 0.0),
+                "exact_match": crag.get("exact_match", 0.0),
                 "avg_latency_s": crag.get("avg_latency_s", 0.0),
             },
             "naive": {
-                "exact_match": naive.get("exact_match"),
                 "numeric_accuracy": naive.get("numeric_accuracy"),
+                "span_match": naive.get("span_match"),
+                "exact_match": naive.get("exact_match"),
             },
             "per_question": crag.get("per_question", []),
             "naive_per_question": naive.get("per_question", []),
@@ -190,10 +194,12 @@ def _build_summary(reports: Mapping[str, Any]) -> dict[str, Any]:
             "crag": {
                 "abstention_rate": crag.get("abstention_rate", 0.0),
                 "false_answer_rate": crag.get("false_answer_rate", 1.0),
+                "classification_breakdown": crag.get("classification_breakdown", {}),
             },
             "naive": {
                 "abstention_rate": naive.get("abstention_rate"),
                 "false_answer_rate": naive.get("false_answer_rate"),
+                "classification_breakdown": naive.get("classification_breakdown", {}),
             },
             "per_question": crag.get("per_question", []),
             "naive_per_question": naive.get("per_question", []),
@@ -648,7 +654,12 @@ def main() -> None:
     latest_json = out / "summary_latest.json"
     latest_md = out / "summary_latest.md"
 
-    full_report = {"timestamp": ts, "gates": gates, "summary": summary}
+    full_report = {
+        "timestamp": ts,
+        "reranker_enabled": not args.no_reranker,
+        "gates": gates,
+        "summary": summary,
+    }
     for p in (json_path, latest_json):
         p.write_text(json.dumps(full_report, indent=2), encoding="utf-8")
 
