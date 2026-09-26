@@ -44,6 +44,10 @@ class Settings(BaseSettings):
 
     # === CRAG ===
     max_crag_cycles: int = Field(default=2, description="Maximum CRAG correction cycles")
+    reranker_coarse_threshold: float = Field(
+        default=-2.0,
+        description="Stage 1 coarse gate: top rerank score below this triggers immediate abstention",
+    )
 
     # === Chunking ===
     prose_chunk_size: int = Field(default=512, description="Target prose chunk size in tokens")

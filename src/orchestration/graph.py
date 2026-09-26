@@ -99,8 +99,11 @@ def refuse_node(state: CRAGState) -> dict[str, Any]:
 
     ticker = filters.get("company_ticker", "the company")
 
+    stage = state.get("abstention_stage", 1 if not enriched else 2)
+    reason = state.get("abstention_reason", "Insufficient evidence in corpus")
+
     answer = (
-        f"I could not find sufficient evidence in the available SEC filings "
+        f"[ABSTAIN] I could not find sufficient evidence in the available SEC filings "
         f"to answer this question.\n\n"
     )
 
@@ -122,6 +125,9 @@ def refuse_node(state: CRAGState) -> dict[str, Any]:
         "final_answer": answer,
         "confidence": "insufficient",
         "generation": answer,
+        "is_abstention": True,
+        "abstention_stage": stage,
+        "abstention_reason": reason,
     }
 
 

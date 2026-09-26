@@ -42,11 +42,25 @@ def grader_node(state: CRAGState) -> dict[str, Any]:
     cycle_count = state.get("cycle_count", 0)
     max_cycles = 2  # From design decisions
 
-    if not enriched:
+    # Stage 1 — coarse gate: reranker/similarity score threshold on the top retrieved chunk
+    # Below threshold → abstain immediately, skip generation. Targets out-of-corpus queries.
+    from config.settings import get_settings
+    settings = get_settings()
+
+    reranked = state.get("reranked_results", [])
+    top_score = float(reranked[0].get("score", -999.0)) if reranked else -999.0
+
+    if not reranked or not enriched or top_score < settings.reranker_coarse_threshold:
+        logger.info(
+            f"Stage 1 coarse gate: top rerank score {top_score:.4f} < {settings.reranker_coarse_threshold}. Abstaining immediately."
+        )
         return {
             "grading_results": [],
             "confidence": "insufficient",
             "crag_action": "refuse",
+            "is_abstention": True,
+            "abstention_stage": 1,
+            "abstention_reason": f"Stage 1 coarse gate: top rerank score {top_score:.2f} below threshold {settings.reranker_coarse_threshold}",
         }
 
     # Format chunks for grading
@@ -169,7 +183,7 @@ def grader_node(state: CRAGState) -> dict[str, Any]:
         }
         prev_trace = state.get("pipeline_trace") or []
 
-        return {
+        state_update = {
             "grading_results": grades,
             "confidence": confidence,
             "crag_action": action,
@@ -178,6 +192,17 @@ def grader_node(state: CRAGState) -> dict[str, Any]:
             "pipeline_trace": prev_trace + [trace],
         }
 
+        if action == "refuse":
+            state_update["is_abstention"] = True
+            state_update["abstention_stage"] = 2
+            state_update["abstention_reason"] = (
+                "Stage 2 fine-grained check: insufficient evidence in filing to answer question after retries"
+            )
+        else:
+            state_update["is_abstention"] = False
+
+        return state_update
+
     except Exception as e:
         logger.error(f"Grading failed: {e}")
         # Fallback: proceed with generation on error
@@ -185,6 +210,7 @@ def grader_node(state: CRAGState) -> dict[str, Any]:
             "grading_results": [],
             "confidence": "medium",
             "crag_action": "generate",
+            "is_abstention": False,
         }
 
 
@@ -207,7 +233,6 @@ def _determine_action(
     Returns:
         Tuple of (confidence, action).
     """
-    # Decision matrix from Q22
     if relevant >= 3:
         return "high", "generate"
 
@@ -218,7 +243,8 @@ def _determine_action(
         if cycle_count < max_cycles:
             return "low", "rewrite"
         else:
-            return "low", "generate"  # Generate with low confidence after max cycles
+            # Stage 2: Terminate in abstention after retries are exhausted, instead of forcing an answer
+            return "insufficient", "refuse"
 
     # All or mostly irrelevant
     if cycle_count < max_cycles:
