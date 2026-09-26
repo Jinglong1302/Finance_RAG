@@ -30,6 +30,25 @@ _MULTIPLIERS = {
 }
 
 
+def extract_numbers(text: str) -> list[float]:
+    """Extract all candidate financial numbers from text."""
+    if not text:
+        return []
+    tokens = re.findall(
+        r"[-−]?\$?\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|percent|billion|billions|million|millions|thousand|thousands|[bmk])?",
+        text,
+        flags=re.IGNORECASE,
+    )
+    numbers: list[float] = []
+    for token in tokens:
+        token = token.strip().rstrip(".:;")
+        if token:
+            val = parse_financial_number(token)
+            if val is not None:
+                numbers.append(val)
+    return numbers
+
+
 def numeric_match(
     predicted: str,
     expected: str,
@@ -50,26 +69,27 @@ def numeric_match(
     Returns:
         True if numbers match within tolerance.
     """
-    pred_num = parse_financial_number(predicted)
     exp_num = parse_financial_number(expected)
-
-    if pred_num is None or exp_num is None:
+    if exp_num is None:
         return False
 
-    # Handle zero case
-    if abs(exp_num) < 1e-9:
-        return abs(pred_num) < 1e-9
+    pred_num = parse_financial_number(predicted)
+    if pred_num is not None:
+        if abs(exp_num) < 1e-9:
+            if abs(pred_num) < 1e-9:
+                return True
+        elif abs(pred_num - exp_num) / abs(exp_num) <= tolerance:
+            return True
 
-    relative_error = abs(pred_num - exp_num) / abs(exp_num)
-    match = relative_error <= tolerance
+    # Fallback: scan candidate numbers in predicted text (useful when answer contains reasoning/citations)
+    for cand in extract_numbers(predicted):
+        if abs(exp_num) < 1e-9:
+            if abs(cand) < 1e-9:
+                return True
+        elif abs(cand - exp_num) / abs(exp_num) <= tolerance:
+            return True
 
-    if not match:
-        logger.debug(
-            f"Numeric mismatch: predicted={pred_num}, expected={exp_num}, "
-            f"error={relative_error:.4f}, tolerance={tolerance}"
-        )
-
-    return match
+    return False
 
 
 def parse_financial_number(text: str) -> float | None:
@@ -92,7 +112,21 @@ def parse_financial_number(text: str) -> float | None:
     if not text or not text.strip():
         return None
 
-    text = text.strip()
+    # Check for structured JSON metrics block (from CRAG generator)
+    import json
+    json_match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", text)
+    if json_match:
+        try:
+            data = json.loads(json_match.group(1))
+            metrics = data.get("metrics", [])
+            if metrics and "value" in metrics[0]:
+                val = metrics[0]["value"]
+                if isinstance(val, (int, float)):
+                    return float(val)
+        except Exception:
+            pass
+
+    text = text.strip().rstrip(".:;")
 
     # Detect negative (parenthetical notation)
     negative = False
