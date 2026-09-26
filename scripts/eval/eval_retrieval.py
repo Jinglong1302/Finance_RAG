@@ -28,7 +28,7 @@ import argparse
 import json
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Sequence
 
 if TYPE_CHECKING:
     from src.evaluation.baseline import NaiveRAG
@@ -81,7 +81,7 @@ def load_in_corpus_financebench() -> list[dict]:
 
 def evaluate_one(
     question: str,
-    evidence_list: list[dict[str, Any] | str],
+    evidence_list: Sequence[dict[str, Any] | str],
     ticker: str,
     searcher: HybridSearcher,
     reranker: CrossEncoderReranker,
@@ -107,7 +107,7 @@ def evaluate_one(
 
 def evaluate_one_naive(
     question: str,
-    evidence_list: list[dict[str, Any] | str],
+    evidence_list: Sequence[dict[str, Any] | str],
     ticker: str,
     naive: NaiveRAG,
     top_k: int = 10,
