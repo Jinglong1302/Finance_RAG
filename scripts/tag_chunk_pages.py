@@ -123,12 +123,13 @@ def tag_filing_chunks(
 
         for p in pts:
             total += 1
+            payload = p.payload or {}
             # If page_number is already set and not forced, skip
-            if not force and p.payload.get("page_number") is not None:
+            if not force and payload.get("page_number") is not None:
                 tagged += 1
                 continue
 
-            text = p.payload.get("text", "")
+            text = payload.get("text", "")
             page_num = find_chunk_page(text, content, pb_offsets)
             if page_num is not None:
                 client.set_payload(
