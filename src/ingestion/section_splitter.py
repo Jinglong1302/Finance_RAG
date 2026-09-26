@@ -154,10 +154,17 @@ _SECTION_DEFINITIONS: list[tuple[str, str, str, str]] = [
         "Principal Accountant Fees and Services",
         "prose",
     ),
+    # Form 10-Q patterns
     (
-        r"item\s*15[.\s:\-–—]+\s*exhibit",
-        "item15_exhibits",
-        "Exhibits and Financial Statement Schedules",
+        r"item\s*1[.\s:\-–—]+\s*financial\s*statements",
+        "item1_financial_statements",
+        "Financial Statements",
+        "financial_statements",
+    ),
+    (
+        r"item\s*2[.\s:\-–—]+\s*management",
+        "item2_mda",
+        "Management's Discussion and Analysis",
         "prose",
     ),
 ]
@@ -169,6 +176,13 @@ _NOTE_PATTERN = re.compile(
 )
 
 
+def _make_tag_tolerant_pattern(raw_pattern: str) -> str:
+    """Make pattern tolerant to HTML tags, non-breaking spaces, and styling between tokens."""
+    pat = raw_pattern.replace(r"[.\s:\-–—]+", r"(?:<[^>]+>|[.\s:\-–—]|&#?\w+;)+")
+    pat = pat.replace(r"\s+", r"(?:<[^>]+>|\s|&#?\w+;)+")
+    return r"(?:^|<(?:div|p|h[1-6]|tr|td)[^>]*>)\s*(?:<[^>]+>|\s)*" + pat
+
+
 class SectionSplitter:
     """Splits cleaned 10-K filing HTML into SEC-mandated sections.
 
@@ -178,9 +192,14 @@ class SectionSplitter:
     """
 
     def __init__(self) -> None:
-        # Compile regex patterns for efficiency
+        # Compile regex patterns for efficiency with tag tolerance
         self._compiled_patterns = [
-            (re.compile(pattern, re.IGNORECASE), sid, sname, stype)
+            (
+                re.compile(_make_tag_tolerant_pattern(pattern), re.IGNORECASE),
+                sid,
+                sname,
+                stype,
+            )
             for pattern, sid, sname, stype in _SECTION_DEFINITIONS
         ]
 
@@ -207,16 +226,17 @@ class SectionSplitter:
                 "No section boundaries found. "
                 "Treating entire document as a single section."
             )
-            return [
-                FilingSection(
-                    section_id="full_document",
-                    section_name="Full Document",
-                    content_type="prose",
-                    html_content=clean_html,
-                    start_position=0,
-                    end_position=len(clean_html),
-                )
-            ]
+            fallback_section = FilingSection(
+                section_id="full_document",
+                section_name="Full Document",
+                content_type="prose",
+                html_content=clean_html,
+                start_position=0,
+                end_position=len(clean_html),
+            )
+            if tables:
+                self._associate_tables([fallback_section], tables)
+            return [fallback_section]
 
         # Sort boundaries by position
         boundaries.sort(key=lambda x: x[0])
@@ -459,8 +479,12 @@ class SectionSplitter:
                 if matched:
                     continue
 
-            # 4. Fallback: assign to the last financial_statements section
+            # 4. Fallback: assign to the last financial_statements section, or sections[-1]
+            assigned = False
             for section in reversed(sections):
                 if section.content_type == "financial_statements":
                     section.tables.append(table)
+                    assigned = True
                     break
+            if not assigned and sections:
+                sections[-1].tables.append(table)

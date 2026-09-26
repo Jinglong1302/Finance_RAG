@@ -244,10 +244,15 @@ def main() -> None:
             naive_latencies.append(lat)
             console.print(f"  Naive Q{i+1:03d}: {lat:.1f}s | pred={pred[:60]}")
 
+    from src.evaluation.metrics import span_match, span_match_rate
+
     # Metrics
     crag_em = exact_match_rate(crag_preds, gts)
+    crag_span = span_match_rate(crag_preds, gts)
     crag_numeric = evaluate_numeric_accuracy(crag_preds, gts)
+
     naive_em = exact_match_rate(naive_preds, gts) if naive_preds else None
+    naive_span = span_match_rate(naive_preds, gts) if naive_preds else None
     naive_numeric = (
         evaluate_numeric_accuracy(naive_preds, gts) if naive_preds else None
     )
@@ -264,6 +269,8 @@ def main() -> None:
                 "naive_answer": n_ans,
                 "numeric_match": numeric_match(crag_preds[i], s["answer_str"]),
                 "naive_numeric_match": numeric_match(n_ans, s["answer_str"]) if n_ans else None,
+                "span_match": span_match(crag_preds[i], s["answer_str"]),
+                "naive_span_match": span_match(n_ans, s["answer_str"]) if n_ans else None,
                 "derivation": s["derivation"],
                 "answer_type": s["answer_type"],
                 "latency_s": crag_latencies[i],
@@ -278,13 +285,15 @@ def main() -> None:
         table.add_column("Naive (GPT-4o)", style="yellow")
 
     row_pairs = [
-        ("Exact Match", f"{crag_em:.3f}"),
-        ("Numeric Accuracy", f"{crag_numeric.get('accuracy', 0):.3f}"),
+        ("Numeric Accuracy (Primary)", f"{crag_numeric.get('accuracy', 0):.3f}"),
+        ("Semantic Span Match", f"{crag_span:.3f}"),
+        ("Exact Match (Strict)", f"{crag_em:.3f}"),
         ("Avg Latency (s)", f"{sum(crag_latencies)/len(crag_latencies):.1f}"),
     ]
     naive_vals = [
-        f"{naive_em:.3f}" if naive_em is not None else "n/a",
         f"{naive_numeric.get('accuracy',0):.3f}" if naive_numeric else "n/a",
+        f"{naive_span:.3f}" if naive_span is not None else "n/a",
+        f"{naive_em:.3f}" if naive_em is not None else "n/a",
         f"{sum(naive_latencies)/len(naive_latencies):.1f}" if naive_latencies else "n/a",
     ]
     for i, (metric, cval) in enumerate(row_pairs):
@@ -303,14 +312,16 @@ def main() -> None:
         "timestamp": ts,
         "n_questions": len(samples),
         "crag": {
-            "exact_match": crag_em,
             "numeric_accuracy": crag_numeric.get("accuracy", 0.0),
+            "span_match": crag_span,
+            "exact_match": crag_em,
             "avg_latency_s": sum(crag_latencies) / len(crag_latencies),
             "per_question": per_q,
         },
         "naive": {
-            "exact_match": naive_em,
             "numeric_accuracy": naive_numeric.get("accuracy", 0.0) if naive_numeric else None,
+            "span_match": naive_span,
+            "exact_match": naive_em,
             "avg_latency_s": sum(naive_latencies) / len(naive_latencies) if naive_latencies else None,
             "per_question": [
                 {

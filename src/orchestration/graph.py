@@ -87,6 +87,7 @@ def refuse_node(state: CRAGState) -> dict[str, Any]:
     Returns:
         State update with refusal answer.
     """
+    t0 = time.perf_counter()
     query = state.get("original_query", "")
     enriched = state.get("enriched_contexts", [])
     filters = state.get("structured_filters", {})
@@ -122,6 +123,15 @@ def refuse_node(state: CRAGState) -> dict[str, Any]:
         f"- The data may be in a filing not included in the current corpus.\n"
     )
 
+    prev_trace = state.get("pipeline_trace") or []
+    trace = {
+        "node": "refuse",
+        "latency_s": round(time.perf_counter() - t0, 4),
+        "cost": 0.0,
+        "abstention_stage": stage,
+        "abstention_reason": reason,
+    }
+
     return {
         "final_answer": answer,
         "confidence": "insufficient",
@@ -129,6 +139,7 @@ def refuse_node(state: CRAGState) -> dict[str, Any]:
         "is_abstention": True,
         "abstention_stage": stage,
         "abstention_reason": reason,
+        "pipeline_trace": prev_trace + [trace],
     }
 
 

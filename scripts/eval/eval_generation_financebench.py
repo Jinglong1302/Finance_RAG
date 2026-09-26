@@ -102,6 +102,8 @@ def _load_in_corpus_fb() -> list[tuple[EvalSample, str]]:
             evidence=evidence_text,
             source="financebench",
             category=row.get("question_reasoning", "extraction"),
+            doc_period=row.get("doc_period"),
+            doc_name=row.get("doc_name"),
         )
         ticker = CORPUS_TICKER_MAP[company]
         pairs.append((sample, ticker))
@@ -118,8 +120,8 @@ def _collect_crag_data(
     pairs: list[tuple[EvalSample, str]],
     graph: Any,
     limit: int | None,
-) -> tuple[dict[str, list[Any]], list[str], list[str], list[str], float]:
-    """Run CRAG pipeline, return ragas_data, raw_answers, predictions, ground_truths, total_latency."""
+) -> tuple[dict[str, list[Any]], list[str], list[str], list[str], float, list[dict[str, Any]]]:
+    """Run CRAG pipeline, return ragas_data, raw_answers, predictions, ground_truths, total_latency, crag_results."""
     from src.evaluation.ragas_eval import (
         _clean_answer_for_ragas,
         _format_contexts_for_ragas,
@@ -134,6 +136,7 @@ def _collect_crag_data(
     raw_answers: list[str] = []
     predictions: list[str] = []
     ground_truths: list[str] = []
+    crag_results: list[dict[str, Any]] = []
     total_latency = 0.0
 
     sample_pairs = pairs[:limit] if limit else pairs
@@ -156,6 +159,7 @@ def _collect_crag_data(
             raw_answers.append(raw)
             predictions.append(raw)
             ground_truths.append(sample.ground_truth)
+            crag_results.append(result)
 
             console.print(f"  CRAG Q{i+1:03d}: {latency:.1f}s")
         except Exception as e:
@@ -167,8 +171,9 @@ def _collect_crag_data(
             raw_answers.append(f"Error: {e}")
             predictions.append("")
             ground_truths.append(sample.ground_truth)
+            crag_results.append({"error": str(e), "final_answer": f"Error: {e}"})
 
-    return ragas_data, raw_answers, predictions, ground_truths, total_latency
+    return ragas_data, raw_answers, predictions, ground_truths, total_latency, crag_results
 
 
 def _run_ragas(ragas_data: dict[str, Any]) -> tuple[dict[str, float], list[dict[str, float | None]]]:
@@ -269,24 +274,54 @@ def main() -> None:
         else NaiveRAG(qdrant, embedder, settings.qdrant_collection, top_k=5)
     )
 
+    from collections import Counter
+    from scripts.eval.eval_abstention import classify_response
+    from scripts.eval.eval_retrieval import check_filing_indexed
+    from src.evaluation.metrics import classify_qa_result, span_match
+
     # Run CRAG
     console.print("\n[bold]Running CRAG pipeline...[/bold]")
-    crag_ragas, crag_raw, crag_preds, gts, crag_latency = _collect_crag_data(
+    crag_ragas, crag_raw, crag_preds, gts, crag_latency, crag_results = _collect_crag_data(
         all_pairs, graph, args.limit
     )
+
+    limited_pairs = all_pairs[: args.limit] if args.limit else all_pairs
 
     # Run naive baseline
     naive_preds: list[str] = []
     naive_latency = 0.0
     if naive:
         console.print("\n[bold]Running Naive baseline...[/bold]")
-        limited_pairs = all_pairs[: args.limit] if args.limit else all_pairs
         for i, (sample, ticker) in enumerate(limited_pairs):
             t0 = time.perf_counter()
             res = naive.run(sample.question, ticker=ticker)
             naive_latency += time.perf_counter() - t0
             naive_preds.append(res["answer"])
             console.print(f"  Naive Q{i+1:03d}: {res['latency_s']}s")
+
+    # 4-way classification per question
+    indexed_flags: list[bool] = []
+    crag_classes: list[str] = []
+    naive_classes: list[str] = []
+
+    for i, (sample, ticker) in enumerate(limited_pairs):
+        is_idx = check_filing_indexed(qdrant, settings.qdrant_collection, ticker, sample.doc_period)
+        indexed_flags.append(is_idx)
+
+        c_raw = crag_raw[i] if i < len(crag_raw) else ""
+        c_res = crag_results[i] if i < len(crag_results) else {}
+        c_refused = bool(c_res.get("is_abstention") or classify_response(c_raw, c_res) == "abstain")
+        c_cls = classify_qa_result(c_raw, sample.ground_truth, is_indexed=is_idx, is_refusal=c_refused)
+        crag_classes.append(c_cls)
+
+        if naive_preds:
+            n_raw = naive_preds[i] if i < len(naive_preds) else ""
+            n_refused = bool(classify_response(n_raw) == "abstain")
+            n_cls = classify_qa_result(n_raw, sample.ground_truth, is_indexed=is_idx, is_refusal=n_refused)
+            naive_classes.append(n_cls)
+
+    crag_breakdown = dict(Counter(crag_classes))
+    naive_breakdown = dict(Counter(naive_classes)) if naive_preds else {}
 
     # Numeric accuracy
     crag_numeric = evaluate_numeric_accuracy(crag_preds, gts)
@@ -304,16 +339,26 @@ def main() -> None:
 
     # Display
     table = Table(title="Generation Metrics (FinanceBench in-corpus + Apple, n≤77)")
-    table.add_column("Metric")
+    table.add_column("Metric / Classification")
     table.add_column("CRAG", style="green")
     if naive_preds:
         table.add_column("Naive", style="yellow")
 
     rows_data = [
+        ("Answered Correct", str(crag_breakdown.get("answered-correct", 0))),
+        ("Answered Incorrect", str(crag_breakdown.get("answered-incorrect", 0))),
+        ("Abstained Correctly (Real Gap)", str(crag_breakdown.get("abstained-correctly-real-gap", 0))),
+        ("Abstained Incorrectly", str(crag_breakdown.get("abstained-incorrectly", 0))),
+        ("Excluded (Unindexed Period)", str(crag_breakdown.get("excluded: fiscal year not indexed", 0))),
         ("Numeric Accuracy", f"{crag_numeric.get('accuracy', 0):.3f}"),
         ("Avg Latency (s)", f"{crag_latency / max(len(crag_preds), 1):.1f}"),
     ]
     naive_row_data = [
+        str(naive_breakdown.get("answered-correct", 0)),
+        str(naive_breakdown.get("answered-incorrect", 0)),
+        str(naive_breakdown.get("abstained-correctly-real-gap", 0)),
+        str(naive_breakdown.get("abstained-incorrectly", 0)),
+        str(naive_breakdown.get("excluded: fiscal year not indexed", 0)),
         f"{naive_numeric.get('accuracy', 0):.3f}",
         f"{naive_latency / max(len(naive_preds), 1):.1f}",
     ]
@@ -341,12 +386,16 @@ def main() -> None:
         "crag": {
             "ragas": crag_ragas_scores,
             "numeric_accuracy": crag_numeric.get("accuracy", 0.0),
+            "classification_breakdown": crag_breakdown,
             "avg_latency_s": crag_latency / max(n_evaluated, 1),
             "per_question": [
                 {
                     "question": crag_ragas["question"][i],
                     "ground_truth": crag_ragas["ground_truth"][i],
                     "answer": crag_raw[i] if i < len(crag_raw) else "",
+                    "classification": crag_classes[i] if i < len(crag_classes) else "",
+                    "is_indexed": indexed_flags[i] if i < len(indexed_flags) else True,
+                    "pipeline_trace": crag_results[i].get("pipeline_trace", []) if i < len(crag_results) else [],
                     "faithfulness": crag_per_sample_ragas[i].get("faithfulness") if i < len(crag_per_sample_ragas) else None,
                     "answer_relevancy": crag_per_sample_ragas[i].get("answer_relevancy") if i < len(crag_per_sample_ragas) else None,
                     "context_precision": crag_per_sample_ragas[i].get("context_precision") if i < len(crag_per_sample_ragas) else None,
@@ -357,12 +406,15 @@ def main() -> None:
         },
         "naive": {
             "numeric_accuracy": naive_numeric.get("accuracy", 0.0) if naive_numeric else None,
+            "classification_breakdown": naive_breakdown,
             "avg_latency_s": naive_latency / max(len(naive_preds), 1) if naive_preds else None,
             "per_question": [
                 {
                     "question": crag_ragas["question"][i] if i < len(crag_ragas["question"]) else "",
                     "ground_truth": crag_ragas["ground_truth"][i] if i < len(crag_ragas["ground_truth"]) else "",
                     "answer": naive_preds[i] if i < len(naive_preds) else "",
+                    "classification": naive_classes[i] if i < len(naive_classes) else "",
+                    "is_indexed": indexed_flags[i] if i < len(indexed_flags) else True,
                 }
                 for i in range(len(naive_preds))
             ],
