@@ -73,14 +73,18 @@ def _load_custom_eval() -> list[EvalSample]:
 
 def _load_in_corpus_fb() -> list[tuple[EvalSample, str]]:
     """Returns (EvalSample, ticker) pairs for in-corpus FinanceBench."""
-    from huggingface_hub import hf_hub_download
+    local_path = Path(__file__).parent.parent.parent / "data" / "eval" / "financebench_in_corpus.jsonl"
+    if local_path.exists():
+        rows = [json.loads(l) for l in open(local_path, encoding="utf-8") if l.strip()]
+    else:
+        from huggingface_hub import hf_hub_download
 
-    path = hf_hub_download(
-        repo_id="PatronusAI/financebench",
-        filename="financebench_merged.jsonl",
-        repo_type="dataset",
-    )
-    rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
+        path = hf_hub_download(
+            repo_id="PatronusAI/financebench",
+            filename="financebench_merged.jsonl",
+            repo_type="dataset",
+        )
+        rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
     pairs = []
     for row in rows:
         company = row.get("company", "")
@@ -192,6 +196,12 @@ def _run_ragas(ragas_data: dict[str, Any]) -> dict[str, float]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generation eval — FinanceBench + Apple")
+    parser.add_argument(
+        "--source",
+        choices=["all", "apple", "fb"],
+        default="all",
+        help="Which dataset to evaluate: 'fb' (27 in-corpus FB), 'apple' (50 AAPL custom), or 'all'",
+    )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--no-baseline", action="store_true")
     parser.add_argument("--skip-ragas", action="store_true", help="Skip Ragas (latency)")
@@ -202,15 +212,15 @@ def main() -> None:
     setup_logging(args.log_level)
     settings = get_settings()
 
-    console.print("[bold cyan]Slice 2 — Generation (FinanceBench in-corpus + Apple)[/bold cyan]")
+    console.print(f"[bold cyan]Slice 2 — Generation ({args.source.upper()})[/bold cyan]")
 
     # Load data
-    fb_pairs = _load_in_corpus_fb()
-    apple_samples = _load_custom_eval()
-    # Apple has no per-question ticker filtering needed (AAPL already indexed)
-    all_pairs: list[tuple[EvalSample, str]] = fb_pairs + [
-        (s, "AAPL") for s in apple_samples
-    ]
+    all_pairs: list[tuple[EvalSample, str]] = []
+    if args.source in ("all", "fb"):
+        all_pairs.extend(_load_in_corpus_fb())
+    if args.source in ("all", "apple"):
+        all_pairs.extend((s, "AAPL") for s in _load_custom_eval())
+
     console.print(f"Total: {len(all_pairs)} questions")
 
     # Init pipeline
