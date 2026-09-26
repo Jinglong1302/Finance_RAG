@@ -71,7 +71,7 @@ def main() -> None:
     if args.naive:
         console.print("[bold yellow]Running in Naive RAG Mode (Dense-only, no reranker, no loops)[/bold yellow]\n")
         from src.evaluation.baseline import NaiveRAG
-        from scripts.query_baseline import run_baseline_query, run_interactive as run_baseline_interactive
+        from scripts.query_naive import run_naive_query as run_baseline_query, run_interactive as run_baseline_interactive
 
         baseline = NaiveRAG(
             qdrant_client=qdrant_client,
