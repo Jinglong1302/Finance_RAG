@@ -134,7 +134,7 @@ def refuse_node(state: CRAGState) -> dict[str, Any]:
 
 def build_crag_graph(
     searcher: HybridSearcher,
-    reranker: CrossEncoderReranker,
+    reranker: CrossEncoderReranker | None,
     expander: ParentExpander,
     qdrant_client: Any,
     collection_name: str = "sec_filings",

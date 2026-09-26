@@ -84,7 +84,7 @@ def evaluate_one(
     evidence_list: Sequence[dict[str, Any] | str],
     ticker: str,
     searcher: HybridSearcher,
-    reranker: CrossEncoderReranker,
+    reranker: CrossEncoderReranker | None,
     top_k_retrieve: int = 25,
     top_k_rerank: int = 10,
 ) -> dict[str, Any]:
@@ -94,7 +94,10 @@ def evaluate_one(
         filters={"company_ticker": ticker},
         top_k=top_k_retrieve,
     )
-    reranked = reranker.rerank(question, candidates, top_k=top_k_rerank)
+    if reranker is not None:
+        reranked = reranker.rerank(question, candidates, top_k=top_k_rerank)
+    else:
+        reranked = candidates[:top_k_rerank]
 
     from src.evaluation.metrics import chunk_matches_evidence
 
@@ -171,6 +174,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Retrieval evaluation slice")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--no-baseline", action="store_true")
+    parser.add_argument("--no-reranker", action="store_true", help="Bypass cross-encoder reranker")
     parser.add_argument("--output", default="results/eval/retrieval")
     parser.add_argument("--log-level", default="WARNING")
     args = parser.parse_args()
@@ -196,7 +200,10 @@ def main() -> None:
     qdrant = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
     embedder = BGEEmbedder(model_name=settings.embedding_model)
     searcher = HybridSearcher(qdrant, embedder, settings.qdrant_collection)
-    reranker = CrossEncoderReranker(model_name=settings.reranker_model)
+    use_reranker = not args.no_reranker and settings.reranker_model.lower() not in ("none", "", "null", "false")
+    reranker = CrossEncoderReranker(model_name=settings.reranker_model) if use_reranker else None
+    if not use_reranker:
+        console.print("[yellow]Cross-encoder reranker disabled (bypassed).[/yellow]")
     naive = (
         None
         if args.no_baseline

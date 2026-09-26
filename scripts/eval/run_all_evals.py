@@ -602,6 +602,7 @@ def main() -> None:
         help="Which slices to run (default: all)",
     )
     parser.add_argument("--no-baseline", action="store_true")
+    parser.add_argument("--no-reranker", action="store_true", help="Bypass cross-encoder reranker in all slices")
     parser.add_argument("--skip-ragas", action="store_true")
     parser.add_argument("--output", default="results/eval")
     args = parser.parse_args()
@@ -610,6 +611,8 @@ def main() -> None:
         extra: list[str] = []
         if args.no_baseline:
             extra.append("--no-baseline")
+        if args.no_reranker:
+            extra.append("--no-reranker")
         if args.skip_ragas:
             extra.append("--skip-ragas")
 
