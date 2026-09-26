@@ -68,6 +68,10 @@ def _is_refusal(answer: str) -> bool:
 
 
 def load_out_of_corpus() -> list[dict]:
+    local_path = Path(__file__).parent.parent.parent / "data" / "eval" / "abstention_eval.jsonl"
+    if local_path.exists():
+        return [json.loads(l) for l in open(local_path, encoding="utf-8") if l.strip()]
+
     from huggingface_hub import hf_hub_download
 
     path = hf_hub_download(
@@ -81,7 +85,7 @@ def load_out_of_corpus() -> list[dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Abstention evaluation slice")
-    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--limit", type=int, default=20, help="Number of questions to evaluate (default: 20)")
     parser.add_argument("--no-baseline", action="store_true")
     parser.add_argument("--output", default="results/eval/abstention")
     parser.add_argument("--log-level", default="WARNING")

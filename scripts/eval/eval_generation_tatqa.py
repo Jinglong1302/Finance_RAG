@@ -78,11 +78,16 @@ def _build_context(passage: dict) -> str:
     return "\n\n".join(parts)
 
 
-def load_tatqa_samples(n: int, seed: int = 42) -> list[dict]:
+def load_tatqa_samples(n: int = 50, seed: int = 42) -> list[dict]:
     """Load n TAT-QA samples from the train file.
 
     Each returned dict: {question, answer_str, context, derivation, answer_type}
     """
+    local_path = Path(__file__).parent.parent.parent / "data" / "eval" / "tatqa_eval.jsonl"
+    if local_path.exists():
+        samples = [json.loads(l) for l in open(local_path, encoding="utf-8") if l.strip()]
+        return samples[:n]
+
     from huggingface_hub import hf_hub_download
 
     path = hf_hub_download(
@@ -156,7 +161,7 @@ def exact_match_rate(preds: list[str], gts: list[str]) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="TAT-QA generation evaluation slice")
-    parser.add_argument("--n", type=int, default=45, help="Number of TAT-QA samples")
+    parser.add_argument("--n", type=int, default=50, help="Number of TAT-QA samples (default: 50)")
     parser.add_argument("--no-baseline", action="store_true")
     parser.add_argument("--output", default="results/eval/generation_tatqa")
     parser.add_argument("--log-level", default="WARNING")
