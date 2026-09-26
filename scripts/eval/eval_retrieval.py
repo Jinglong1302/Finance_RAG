@@ -63,6 +63,11 @@ IN_CORPUS_COMPANIES = set(CORPUS_TICKER_MAP.keys())
 def load_in_corpus_financebench() -> list[dict]:
     """Load FinanceBench rows for in-corpus companies, returning raw dicts."""
     import json
+
+    local_path = Path(__file__).parent.parent.parent / "data" / "eval" / "financebench_in_corpus.jsonl"
+    if local_path.exists():
+        return [json.loads(l) for l in open(local_path, encoding="utf-8") if l.strip()]
+
     from huggingface_hub import hf_hub_download
 
     path = hf_hub_download(
