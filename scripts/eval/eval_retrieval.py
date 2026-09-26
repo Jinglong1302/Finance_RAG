@@ -79,7 +79,7 @@ def load_in_corpus_financebench() -> list[dict]:
     return [r for r in rows if r.get("company", "") in IN_CORPUS_COMPANIES]
 
 
-def check_filing_indexed(client: Any, collection_name: str, ticker: str, fiscal_year: Any, doc_name: str) -> bool:
+def check_filing_indexed(client: Any, collection_name: str, ticker: str, fiscal_year: Any, doc_name: str = "") -> bool:
     """Audit whether the required filing is indexed in Qdrant."""
     if not fiscal_year:
         return True
