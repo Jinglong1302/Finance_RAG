@@ -13,46 +13,119 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Retrieval metrics
+# Retrieval metrics (FinanceBench & standard)
 # ---------------------------------------------------------------------------
 
 
-def hit_at_k(retrieved_texts: list[str], evidence_texts: list[str], k: int) -> bool:
-    """Return True if at least one of the top-k chunks contains any evidence.
+def chunk_matches_evidence(
+    chunk: Any,
+    evidence_entry: dict[str, Any] | str,
+    text_overlap_threshold: float = 0.50,
+) -> bool:
+    """Return True if chunk matches evidence via Page match OR Text-overlap match >= 50%.
 
-    Evidence match uses case-insensitive substring: the first 120 chars of
-    each evidence snippet must appear verbatim in a retrieved chunk.
+    Rule (FinanceBench):
+    A retrieved chunk counts as a hit if EITHER:
+    1. Page match — chunk's source page metadata equals evidence_page_num, OR
+    2. Text-overlap match — word-level overlap between chunk text and evidence_text is >= 50%
+    Use OR, not AND — parent-child chunking can span page boundaries, and PDF
+    extraction can shift page numbers by one. For questions with multiple evidence
+    entries, count a hit if any entry matches.
     """
-    probes = [_probe(e) for e in evidence_texts if e]
-    for text in retrieved_texts[:k]:
-        text_lower = text.lower()
-        for probe in probes:
-            if probe in text_lower:
+    chunk_text = ""
+    chunk_page = None
+
+    if isinstance(chunk, str):
+        chunk_text = chunk
+    elif isinstance(chunk, dict):
+        chunk_text = chunk.get("text", "")
+        meta = chunk.get("metadata", {})
+        if isinstance(meta, dict):
+            chunk_page = meta.get("page_number", chunk.get("page_number"))
+        else:
+            chunk_page = getattr(meta, "page_number", None)
+    else:
+        chunk_text = getattr(chunk, "text", "")
+        meta = getattr(chunk, "metadata", None)
+        if meta is not None:
+            chunk_page = getattr(meta, "page_number", None) if not isinstance(meta, dict) else meta.get("page_number")
+
+    if isinstance(evidence_entry, str):
+        ev_text = evidence_entry
+        ev_page = None
+    elif isinstance(evidence_entry, dict):
+        ev_text = evidence_entry.get("evidence_text", "")
+        ev_page = evidence_entry.get("evidence_page_num")
+    else:
+        ev_text = getattr(evidence_entry, "evidence_text", "")
+        ev_page = getattr(evidence_entry, "evidence_page_num", None)
+
+    # 1. Page match: chunk's source page metadata equals evidence_page_num
+    if ev_page is not None and chunk_page is not None:
+        if chunk_page == ev_page:
+            return True
+
+    # 2. Text-overlap match: word-level overlap between chunk text and evidence_text is >= 50%
+    if ev_text:
+        ev_words = set(re.findall(r"\w+", ev_text.lower()))
+        if ev_words:
+            chunk_words = set(re.findall(r"\w+", chunk_text.lower()))
+            overlap = len(ev_words & chunk_words) / len(ev_words)
+            if overlap >= text_overlap_threshold:
+                return True
+
+        # Fallback substring check (for short evidence phrases)
+        probe = _probe(ev_text)
+        if probe and probe in chunk_text.lower():
+            return True
+
+    return False
+
+
+def hit_at_k(
+    retrieved_items: list[Any],
+    evidence_list: list[Any],
+    k: int,
+    text_overlap_threshold: float = 0.50,
+) -> bool:
+    """Return True if at least one of the top-k chunks matches any evidence entry."""
+    for item in retrieved_items[:k]:
+        for ev in evidence_list:
+            if chunk_matches_evidence(item, ev, text_overlap_threshold=text_overlap_threshold):
                 return True
     return False
 
 
-def recall_at_k(retrieved_texts: list[str], evidence_texts: list[str], k: int) -> float:
-    """Fraction of evidence snippets that appear in the top-k retrieved chunks."""
-    if not evidence_texts:
+def recall_at_k(
+    retrieved_items: list[Any],
+    evidence_list: list[Any],
+    k: int,
+    text_overlap_threshold: float = 0.50,
+) -> float:
+    """Fraction of evidence entries matched in top-k chunks."""
+    if not evidence_list:
         return 0.0
-    found = 0
-    for evidence in evidence_texts:
-        probe = _probe(evidence)
-        for text in retrieved_texts[:k]:
-            if probe in text.lower():
-                found += 1
+    matched = 0
+    for ev in evidence_list:
+        found = False
+        for item in retrieved_items[:k]:
+            if chunk_matches_evidence(item, ev, text_overlap_threshold=text_overlap_threshold):
+                found = True
                 break
-    return found / len(evidence_texts)
+        if found:
+            matched += 1
+    return matched / len(evidence_list)
 
 
-def mrr(retrieved_texts: list[str], evidence_texts: list[str]) -> float:
-    """Mean Reciprocal Rank: 1/rank of first chunk that contains any evidence."""
-    probes = [_probe(e) for e in evidence_texts if e]
-    for rank, text in enumerate(retrieved_texts, start=1):
-        text_lower = text.lower()
-        for probe in probes:
-            if probe in text_lower:
+def mrr(
+    retrieved_items: list[Any],
+    evidence_list: list[Any],
+    text_overlap_threshold: float = 0.50,
+) -> float:
+    """Mean Reciprocal Rank: 1/rank of first chunk that matches any evidence."""
+    for rank, item in enumerate(retrieved_items, start=1):
+        for ev in evidence_list:
+            if chunk_matches_evidence(item, ev, text_overlap_threshold=text_overlap_threshold):
                 return 1.0 / rank
     return 0.0
 

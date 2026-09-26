@@ -81,7 +81,7 @@ def load_in_corpus_financebench() -> list[dict]:
 
 def evaluate_one(
     question: str,
-    evidence_list: list[str],
+    evidence_list: list[dict[str, Any] | str],
     ticker: str,
     searcher: HybridSearcher,
     reranker: CrossEncoderReranker,
@@ -95,47 +95,50 @@ def evaluate_one(
         top_k=top_k_retrieve,
     )
     reranked = reranker.rerank(question, candidates, top_k=top_k_rerank)
-    retrieved_texts = [r.text for r in reranked]
 
     result: dict[str, Any] = {"question": question[:80], "ticker": ticker}
     for k in (1, 3, 5, 10):
-        result[f"Hit@{k}"] = int(hit_at_k(retrieved_texts, evidence_list, k))
-    result["Recall@5"] = recall_at_k(retrieved_texts, evidence_list, 5)
-    result["Recall@10"] = recall_at_k(retrieved_texts, evidence_list, 10)
-    result["MRR"] = mrr(retrieved_texts, evidence_list)
+        result[f"Hit@{k}"] = int(hit_at_k(reranked, evidence_list, k))
+    result["Recall@5"] = recall_at_k(reranked, evidence_list, 5)
+    result["Recall@10"] = recall_at_k(reranked, evidence_list, 10)
+    result["MRR"] = mrr(reranked, evidence_list)
     return result
 
 
 def evaluate_one_naive(
     question: str,
-    evidence_list: list[str],
+    evidence_list: list[dict[str, Any] | str],
     ticker: str,
     naive: NaiveRAG,
     top_k: int = 10,
 ) -> dict[str, Any]:
     """Dense-only retrieval for one question."""
     chunks = naive.retrieve(question, ticker=ticker)
-    retrieved_texts = [c["text"] for c in chunks]
 
     result: dict[str, Any] = {"question": question[:80], "ticker": ticker}
     for k in (1, 3, 5, 10):
-        result[f"Hit@{k}"] = int(hit_at_k(retrieved_texts, evidence_list, k))
-    result["Recall@5"] = recall_at_k(retrieved_texts, evidence_list, 5)
-    result["Recall@10"] = recall_at_k(retrieved_texts, evidence_list, 10)
-    result["MRR"] = mrr(retrieved_texts, evidence_list)
+        result[f"Hit@{k}"] = int(hit_at_k(chunks, evidence_list, k))
+    result["Recall@5"] = recall_at_k(chunks, evidence_list, 5)
+    result["Recall@10"] = recall_at_k(chunks, evidence_list, 10)
+    result["MRR"] = mrr(chunks, evidence_list)
     return result
 
 
-def _extract_evidence_texts(row: dict) -> list[str]:
-    """Pull evidence_text strings from a FinanceBench row."""
+def _extract_evidence_entries(row: dict) -> list[dict[str, Any]]:
+    """Pull evidence entries (text + page_num) from a FinanceBench row."""
     evidences = row.get("evidence", [])
     if isinstance(evidences, str):
-        return [evidences] if evidences else []
-    return [
-        e.get("evidence_text", "") if isinstance(e, dict) else str(e)
-        for e in evidences
-        if e
-    ]
+        return [{"evidence_text": evidences, "evidence_page_num": None}] if evidences else []
+    entries = []
+    for e in evidences:
+        if isinstance(e, dict):
+            entries.append({
+                "evidence_text": e.get("evidence_text", ""),
+                "evidence_page_num": e.get("evidence_page_num"),
+            })
+        elif isinstance(e, str) and e:
+            entries.append({"evidence_text": e, "evidence_page_num": None})
+    return entries
 
 
 def main() -> None:
@@ -180,15 +183,15 @@ def main() -> None:
     for i, row in enumerate(rows):
         ticker = CORPUS_TICKER_MAP[row["company"]]
         q = row.get("question", "")
-        evidence_texts = _extract_evidence_texts(row)
+        evidence_entries = _extract_evidence_entries(row)
 
-        if not evidence_texts:
+        if not evidence_entries:
             console.print(f"[dim]  Q{i+1}: no evidence, skipping[/dim]")
             continue
 
         # CRAG retrieval
         t0 = time.perf_counter()
-        res = evaluate_one(q, evidence_texts, ticker, searcher, reranker)
+        res = evaluate_one(q, evidence_entries, ticker, searcher, reranker)
         res["latency_s"] = round(time.perf_counter() - t0, 3)
         res["doc_period"] = row.get("doc_period", "")
         crag_results.append(res)
@@ -196,7 +199,7 @@ def main() -> None:
         # Naive baseline
         if naive:
             t0 = time.perf_counter()
-            nres = evaluate_one_naive(q, evidence_texts, ticker, naive)
+            nres = evaluate_one_naive(q, evidence_entries, ticker, naive)
             nres["latency_s"] = round(time.perf_counter() - t0, 3)
             naive_results.append(nres)
 
@@ -215,7 +218,7 @@ def main() -> None:
     table.add_column("Metric")
     table.add_column("CRAG", style="green")
     if naive_agg:
-        table.add_column("Naive Baseline", style="yellow")
+        table.add_column("Naive RAG", style="yellow")
         table.add_column("Delta", style="cyan")
 
     for metric in ("Hit@1", "Hit@3", "Hit@5", "Hit@10", "Recall@5", "Recall@10", "MRR"):
