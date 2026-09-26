@@ -6,6 +6,14 @@
 
 ---
 
+> [!IMPORTANT]
+> ### ⚠️ Methodology & Disclosure Note
+> **Mid-Development Provenance:** These 50 Apple (AAPL) evaluation questions were authored mid-development specifically for internal regression testing, chunking boundary calibration, and pipeline verification — **not for blind, out-of-sample evaluation**.
+> 
+> **Role in Benchmark Suite:** They serve as Track 2 (Regression & Tabular Reasoning) to ensure that known tabular structures, footnote disclosures, and cover page metadata do not regress across pipeline changes. For unbiased, blind evaluation, the framework relies on Track 1 (Official FinanceBench 27 questions across 5 tickers), Track 3 (TAT-QA isolated table reasoning), and Track 4 (Out-of-corpus abstention).
+
+---
+
 ## 1. Benchmark Category Distribution
 
 | Category | Count | Focus & Retrieval Capability Tested |
