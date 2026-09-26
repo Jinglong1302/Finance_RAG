@@ -203,6 +203,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="TAT-QA generation evaluation slice")
     parser.add_argument("--limit", "--n", dest="n", type=int, default=50, help="Number of TAT-QA samples (default: 50)")
     parser.add_argument("--no-baseline", action="store_true")
+    parser.add_argument("--no-reranker", action="store_true", help="Bypass reranker (ignored for context-injected TAT-QA)")
     parser.add_argument("--output", default="results/eval/generation_tatqa")
     parser.add_argument("--log-level", default="WARNING")
     args = parser.parse_args()
