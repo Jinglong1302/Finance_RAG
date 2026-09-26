@@ -61,10 +61,44 @@ _REFUSAL_PHRASES = (
     "the filing is not",
 )
 
+_HEDGE_PHRASES = (
+    "it is unclear",
+    "might be",
+    "could not verify",
+    "unverified",
+    "possibly",
+    "likely",
+    "may have",
+    "cannot be definitively",
+    "not explicitly stated, but",
+)
 
-def _is_refusal(answer: str) -> bool:
+
+def classify_response(answer: str, state: dict | None = None) -> str:
+    """Deterministically classify response into 'abstain', 'hedge', or 'answer'.
+
+    Machine-classifiable without requiring an LLM judge:
+    1. 'abstain': Emits [ABSTAIN] prefix, state['is_abstention'] == True, or explicit refusal phrase.
+    2. 'hedge': Non-refusal containing speculative or unverified hedge markers.
+    3. 'answer': Confident attempt to provide a factual answer.
+    """
+    if state and state.get("is_abstention"):
+        return "abstain"
+    if answer.strip().startswith("[ABSTAIN]"):
+        return "abstain"
+
     lower = answer.lower()
-    return any(p in lower for p in _REFUSAL_PHRASES)
+    if any(p in lower for p in _REFUSAL_PHRASES):
+        return "abstain"
+
+    if any(p in lower for p in _HEDGE_PHRASES):
+        return "hedge"
+
+    return "answer"
+
+
+def _is_refusal(answer: str, state: dict | None = None) -> bool:
+    return classify_response(answer, state) == "abstain"
 
 
 def load_out_of_corpus() -> list[dict]:
@@ -144,32 +178,36 @@ def main() -> None:
             answer = f"Error: {e}"
         latency = round(time.perf_counter() - t0, 3)
 
-        refused = _is_refusal(answer)
+        classification = classify_response(answer, result if isinstance(result, dict) else None)
+        refused = (classification == "abstain")
         crag_results.append(
             {
                 "question": q[:80],
                 "company": company,
                 "answer_preview": answer[:120],
+                "classification": classification,
                 "refused": refused,
                 "latency_s": latency,
             }
         )
 
-        icon = "✅" if refused else "⚠️ "
+        icon = "✅" if refused else ("🟡" if classification == "hedge" else "⚠️ ")
         console.print(
-            f"  {icon} Q{i+1:03d} [{company}] refused={refused} ({latency}s)"
+            f"  {icon} Q{i+1:03d} [{company}] class={classification} ({latency}s)"
         )
 
         # Naive baseline
         if naive:
             t0 = time.perf_counter()
             nres = naive.run(q)
-            n_refused = _is_refusal(nres["answer"])
+            n_class = classify_response(nres["answer"])
+            n_refused = (n_class == "abstain")
             naive_results.append(
                 {
                     "question": q[:80],
                     "company": company,
                     "answer_preview": nres["answer"][:120],
+                    "classification": n_class,
                     "refused": n_refused,
                     "latency_s": round(time.perf_counter() - t0, 3),
                 }
@@ -177,29 +215,34 @@ def main() -> None:
 
     # Metrics
     n = len(crag_results)
-    crag_abstention = sum(r["refused"] for r in crag_results) / n if n else 0.0
-    crag_false_ans = 1.0 - crag_abstention
+    crag_abstention = sum(1 for r in crag_results if r["classification"] == "abstain") / n if n else 0.0
+    crag_hedge = sum(1 for r in crag_results if r["classification"] == "hedge") / n if n else 0.0
+    crag_false_ans = sum(1 for r in crag_results if r["classification"] == "answer") / n if n else 0.0
 
     naive_abstention = None
+    naive_hedge = None
     naive_false_ans = None
     if naive_results:
         nn = len(naive_results)
-        naive_abstention = sum(r["refused"] for r in naive_results) / nn
-        naive_false_ans = 1.0 - naive_abstention
+        naive_abstention = sum(1 for r in naive_results if r["classification"] == "abstain") / nn
+        naive_hedge = sum(1 for r in naive_results if r["classification"] == "hedge") / nn
+        naive_false_ans = sum(1 for r in naive_results if r["classification"] == "answer") / nn
 
     # Display
-    table = Table(title=f"Abstention Rate (out-of-corpus, n={n})")
-    table.add_column("Metric")
+    table = Table(title=f"Abstention & Groundedness Classification (out-of-corpus, n={n})")
+    table.add_column("Category / Metric")
     table.add_column("CRAG", style="green")
     if naive_results:
         table.add_column("Naive", style="yellow")
 
     rows_display = [
-        ("Abstention Rate ↑", f"{crag_abstention:.3f}"),
-        ("False Answer Rate ↓", f"{crag_false_ans:.3f}"),
+        ("Abstain Rate ↑ (Correct refusal)", f"{crag_abstention:.3f}"),
+        ("Hedge Rate ~ (Uncertain/warning)", f"{crag_hedge:.3f}"),
+        ("False Answer Rate ↓ (Hallucination)", f"{crag_false_ans:.3f}"),
     ]
     naive_display = [
         f"{naive_abstention:.3f}" if naive_abstention is not None else "n/a",
+        f"{naive_hedge:.3f}" if naive_hedge is not None else "n/a",
         f"{naive_false_ans:.3f}" if naive_false_ans is not None else "n/a",
     ]
     for i, (metric, cval) in enumerate(rows_display):

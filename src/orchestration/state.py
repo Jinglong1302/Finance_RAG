@@ -50,6 +50,11 @@ class CRAGState(TypedDict, total=False):
     # === Cost ===
     cost_accumulated: float  # Running cost in USD
 
+    # === Abstention ===
+    is_abstention: bool  # True if pipeline abstained
+    abstention_stage: int | None  # 1 (coarse gate) or 2 (fine-grained self-check)
+    abstention_reason: str | None  # Machine-readable reason for abstention
+
     # === Pipeline Trace (per-node diagnostics for reporting) ===
     pipeline_trace: list[dict]  # List of per-node trace entries
 
