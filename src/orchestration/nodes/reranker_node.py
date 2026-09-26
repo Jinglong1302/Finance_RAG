@@ -19,13 +19,13 @@ logger = get_logger(__name__)
 
 
 def make_reranker_node(
-    reranker: CrossEncoderReranker,
+    reranker: CrossEncoderReranker | None,
     expander: ParentExpander,
 ):
     """Factory to create a reranker node with injected dependencies.
 
     Args:
-        reranker: CrossEncoderReranker instance.
+        reranker: CrossEncoderReranker instance, or None to skip reranking.
         expander: ParentExpander instance.
 
     Returns:
@@ -65,8 +65,11 @@ def make_reranker_node(
         top_k = state.get("result_count", 5)
         query = state.get("rewritten_query") or state.get("original_query", "")
 
-        # Rerank
-        reranked = reranker.rerank(query, candidates, top_k=top_k)
+        # Rerank if model provided, otherwise preserve hybrid rank order
+        if reranker is not None:
+            reranked = reranker.rerank(query, candidates, top_k=top_k)
+        else:
+            reranked = candidates[:top_k]
 
         # Convert to dicts for state
         reranked_dicts = [

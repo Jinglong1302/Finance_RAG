@@ -219,6 +219,7 @@ def main() -> None:
     )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--no-baseline", action="store_true")
+    parser.add_argument("--no-reranker", action="store_true", help="Bypass cross-encoder reranker")
     parser.add_argument("--skip-ragas", action="store_true", help="Skip Ragas (latency)")
     parser.add_argument("--output", default="results/eval/generation_financebench")
     parser.add_argument("--log-level", default="WARNING")
@@ -250,7 +251,10 @@ def main() -> None:
     qdrant = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
     embedder = BGEEmbedder(model_name=settings.embedding_model)
     searcher = HybridSearcher(qdrant, embedder, settings.qdrant_collection)
-    reranker = CrossEncoderReranker(model_name=settings.reranker_model)
+    use_reranker = not args.no_reranker and settings.reranker_model.lower() not in ("none", "", "null", "false")
+    reranker = CrossEncoderReranker(model_name=settings.reranker_model) if use_reranker else None
+    if not use_reranker:
+        console.print("[yellow]Cross-encoder reranker disabled (bypassed).[/yellow]")
     expander = ParentExpander(qdrant, settings.qdrant_collection)
     graph = build_crag_graph(
         searcher=searcher,
