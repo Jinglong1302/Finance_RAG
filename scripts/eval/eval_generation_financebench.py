@@ -171,7 +171,8 @@ def _collect_crag_data(
     return ragas_data, raw_answers, predictions, ground_truths, total_latency
 
 
-def _run_ragas(ragas_data: dict[str, Any]) -> dict[str, float]:
+def _run_ragas(ragas_data: dict[str, Any]) -> tuple[dict[str, float], list[dict[str, float | None]]]:
+    import pandas as pd
     from datasets import Dataset
     from ragas import evaluate
     from ragas.metrics import (
@@ -188,10 +189,24 @@ def _run_ragas(ragas_data: dict[str, Any]) -> dict[str, float]:
     )
     scores: dict[str, float] = {}
     df = results.to_pandas()
-    for col in ("faithfulness", "answer_relevancy", "context_precision", "context_recall"):
+    cols = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]
+    for col in cols:
         if col in df.columns:
-            scores[col] = float(df[col].mean())
-    return scores
+            valid_vals = df[col].dropna()
+            scores[col] = float(valid_vals.mean()) if len(valid_vals) > 0 else 0.0
+
+    per_sample: list[dict[str, float | None]] = []
+    for _, row in df.iterrows():
+        sample_scores: dict[str, float | None] = {}
+        for col in cols:
+            if col in df.columns:
+                val = row[col]
+                sample_scores[col] = float(val) if pd.notna(val) else None
+            else:
+                sample_scores[col] = None
+        per_sample.append(sample_scores)
+
+    return scores, per_sample
 
 
 def main() -> None:
@@ -275,10 +290,11 @@ def main() -> None:
 
     # Ragas
     crag_ragas_scores: dict[str, float] = {}
+    crag_per_sample_ragas: list[dict[str, float | None]] = []
     if not args.skip_ragas:
         console.print("\n[bold]Computing Ragas metrics...[/bold]")
         try:
-            crag_ragas_scores = _run_ragas(crag_ragas)
+            crag_ragas_scores, crag_per_sample_ragas = _run_ragas(crag_ragas)
         except Exception as e:
             console.print(f"[red]Ragas failed: {e}[/red]")
 
@@ -327,6 +343,10 @@ def main() -> None:
                     "question": crag_ragas["question"][i],
                     "ground_truth": crag_ragas["ground_truth"][i],
                     "answer": crag_raw[i] if i < len(crag_raw) else "",
+                    "faithfulness": crag_per_sample_ragas[i].get("faithfulness") if i < len(crag_per_sample_ragas) else None,
+                    "answer_relevancy": crag_per_sample_ragas[i].get("answer_relevancy") if i < len(crag_per_sample_ragas) else None,
+                    "context_precision": crag_per_sample_ragas[i].get("context_precision") if i < len(crag_per_sample_ragas) else None,
+                    "context_recall": crag_per_sample_ragas[i].get("context_recall") if i < len(crag_per_sample_ragas) else None,
                 }
                 for i in range(len(crag_ragas["question"]))
             ],
