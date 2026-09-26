@@ -177,6 +177,7 @@ def _build_summary(reports: Mapping[str, Any]) -> dict[str, Any]:
                 "numeric_accuracy": naive.get("numeric_accuracy"),
             },
             "per_question": crag.get("per_question", []),
+            "naive_per_question": naive.get("per_question", []),
         }
 
     abst = reports.get("abstention")
@@ -463,13 +464,17 @@ def _render_markdown(summary: dict, gates: dict[str, bool], ts: str) -> str:
             for i, item in enumerate(pq):
                 match_icon = "✅ Match" if item.get("numeric_match") else "❌ Mismatch"
                 deriv = f" (Derivation: `{item.get('derivation')}`)" if item.get("derivation") else ""
+                n_ans = item.get("naive_answer")
                 lines += [
                     f"#### Q{i+1}: {item.get('question', '')}",
                     f"",
                     f"**Ground Truth:** `{item.get('ground_truth', '')}`{deriv}  ",
-                    f"**CRAG Answer:** `{item.get('crag_answer', '')}` — **{match_icon}**",
-                    "",
+                    f"- **CRAG Answer:** `{item.get('crag_answer', '')}` — **{match_icon}**",
                 ]
+                if n_ans is not None:
+                    n_match = "✅ Match" if item.get("naive_numeric_match") else "❌ Mismatch"
+                    lines.append(f"- **Naive RAG Answer:** `{n_ans}` — **{n_match}**")
+                lines.append("")
 
     # Slice 4: Abstention
     abst = summary.get("abstention", {})
