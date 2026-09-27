@@ -233,20 +233,20 @@ def _determine_action(
     Returns:
         Tuple of (confidence, action).
     """
-    if relevant >= 3:
+    if relevant >= 2:
         return "high", "generate"
 
-    if relevant >= 1 and (relevant + partial) >= 2:
+    if relevant >= 1:
         return "medium", "generate"
 
-    if relevant == 0 and partial >= 2:
+    if relevant == 0 and partial >= 1:
         if cycle_count < max_cycles:
             return "low", "rewrite"
         else:
-            # Stage 2: Terminate in abstention after retries are exhausted, instead of forcing an answer
-            return "insufficient", "refuse"
+            # Retries exhausted but partial evidence available: generate with low confidence
+            return "low", "generate"
 
-    # All or mostly irrelevant
+    # All irrelevant (relevant == 0 and partial == 0)
     if cycle_count < max_cycles:
         return "insufficient", "rewrite"
     else:

@@ -32,6 +32,7 @@ class CrossEncoderReranker:
         self.model_name = model_name
         self.use_fp16 = use_fp16
         self._model = None
+        self._score_cache: dict[tuple[str, str], float] = {}
 
     @property
     def model(self):
@@ -68,20 +69,32 @@ class CrossEncoderReranker:
         if len(candidates) <= top_k:
             return candidates
 
-        # Create query-document pairs for cross-encoder scoring
-        pairs = [[query, result.text] for result in candidates]
+        # Check score cache
+        uncached_indices: list[int] = []
+        uncached_pairs: list[list[str]] = []
+        scores: list[float] = [0.0] * len(candidates)
 
-        # Score all pairs
-        scores = self.model.compute_score(pairs)
+        for idx, result in enumerate(candidates):
+            cache_key = (query, result.chunk_id)
+            if cache_key in self._score_cache:
+                scores[idx] = self._score_cache[cache_key]
+            else:
+                uncached_indices.append(idx)
+                uncached_pairs.append([query, result.text])
 
-        # Handle single result case (compute_score returns float, not list)
-        if isinstance(scores, (int, float)):
-            scores = [scores]
+        # Score any uncached pairs
+        if uncached_pairs:
+            new_scores = self.model.compute_score(uncached_pairs)
+            if isinstance(new_scores, (int, float)):
+                new_scores = [new_scores]
+            for idx, s in zip(uncached_indices, new_scores):
+                s_float = float(s)
+                scores[idx] = s_float
+                self._score_cache[(query, candidates[idx].chunk_id)] = s_float
 
         # Attach scores and sort
         scored_results: list[tuple[float, SearchResult]] = []
         for score, result in zip(scores, candidates):
-            # Create a new SearchResult with the reranker score
             reranked = SearchResult(
                 chunk_id=result.chunk_id,
                 text=result.text,

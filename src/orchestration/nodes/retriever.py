@@ -79,11 +79,12 @@ def make_retriever_node(searcher: HybridSearcher):
                     "score": r.score,
                 })
 
-        # Deduplicate by chunk_id (keep highest score)
+        # Deduplicate by chunk_id and accumulate with prior cycle candidates
+        prev_results = state.get("search_results", [])
         seen: dict[str, dict] = {}
-        for result in all_results:
+        for result in prev_results + all_results:
             cid = result["chunk_id"]
-            if cid not in seen or result["score"] > seen[cid]["score"]:
+            if cid not in seen or result.get("score", 0.0) > seen[cid].get("score", 0.0):
                 seen[cid] = result
 
         deduped = sorted(seen.values(), key=lambda r: r["score"], reverse=True)
