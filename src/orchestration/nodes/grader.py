@@ -86,6 +86,7 @@ def grader_node(state: CRAGState) -> dict[str, Any]:
             ],
             response_format={"type": "json_object"},
             temperature=0,
+            seed=42,
         )
 
         result_text = response.choices[0].message.content or "{}"

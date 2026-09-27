@@ -56,10 +56,16 @@ class HybridSearcher:
         client: QdrantClient,
         embedder: BGEEmbedder,
         collection_name: str = "sec_filings",
+        dense_weight: float = 1.0,
+        sparse_weight: float = 0.3,
+        rrf_k: int = 60,
     ) -> None:
         self.client = client
         self.embedder = embedder
         self.collection_name = collection_name
+        self.dense_weight = dense_weight
+        self.sparse_weight = sparse_weight
+        self.rrf_k = rrf_k
 
     def search(
         self,
@@ -102,38 +108,56 @@ class HybridSearcher:
         sparse_indices = list(sparse_weights.keys())
         sparse_values = list(sparse_weights.values())
 
-        # Perform hybrid search with RRF fusion
+        # Retrieve candidates independently from dense and sparse streams
+        fetch_limit = max(top_k * 2, 50)
         try:
-            results = self.client.query_points(
+            dense_points = self.client.query_points(
                 collection_name=self.collection_name,
-                prefetch=[
-                    models.Prefetch(
-                        query=dense_vector,
-                        using="dense",
-                        limit=top_k,
-                        filter=qdrant_filter,
-                    ),
-                    models.Prefetch(
-                        query=SparseVector(
-                            indices=sparse_indices,
-                            values=sparse_values,
-                        ),
-                        using="sparse",
-                        limit=top_k,
-                        filter=qdrant_filter,
-                    ),
-                ],
-                query=models.FusionQuery(fusion=models.Fusion.RRF),
-                limit=top_k,
+                query=dense_vector,
+                using="dense",
+                limit=fetch_limit,
+                query_filter=qdrant_filter,
                 with_payload=True,
-            )
+            ).points
+
+            sparse_points = []
+            if sparse_indices:
+                sparse_points = self.client.query_points(
+                    collection_name=self.collection_name,
+                    query=SparseVector(
+                        indices=sparse_indices,
+                        values=sparse_values,
+                    ),
+                    using="sparse",
+                    limit=fetch_limit,
+                    query_filter=qdrant_filter,
+                    with_payload=True,
+                ).points
         except Exception as e:
-            logger.error(f"Hybrid search failed: {e}")
+            logger.error(f"Hybrid search queries failed: {e}")
             return []
+
+        # Client-side weighted RRF fusion (default: dense=1.0, sparse=0.3, k=60)
+        scores: dict[Any, float] = {}
+        point_map: dict[Any, Any] = {}
+
+        for rank, p in enumerate(dense_points):
+            pid = p.id
+            point_map[pid] = p
+            scores[pid] = scores.get(pid, 0.0) + self.dense_weight * (1.0 / (self.rrf_k + rank + 1))
+
+        for rank, p in enumerate(sparse_points):
+            pid = p.id
+            point_map[pid] = p
+            scores[pid] = scores.get(pid, 0.0) + self.sparse_weight * (1.0 / (self.rrf_k + rank + 1))
+
+        sorted_pids = sorted(scores.keys(), key=lambda pid: scores[pid], reverse=True)
+        top_pids = sorted_pids[:top_k]
 
         # Convert to SearchResult objects
         search_results: list[SearchResult] = []
-        for point in results.points:
+        for pid in top_pids:
+            point = point_map[pid]
             payload = point.payload or {}
             search_results.append(
                 SearchResult(
@@ -142,7 +166,7 @@ class HybridSearcher:
                     metadata={
                         k: v for k, v in payload.items() if k != "text"
                     },
-                    score=point.score if point.score is not None else 0.0,
+                    score=scores[pid],
                 )
             )
 

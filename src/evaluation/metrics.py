@@ -227,7 +227,7 @@ def span_match(pred: str, gt: str) -> bool:
     """
     if not pred or not gt:
         return False
-    from src.evaluation.numeric_eval import numeric_match
+    from src.evaluation.numeric_eval import extract_numbers, numeric_match
 
     if numeric_match(pred, gt):
         return True
@@ -239,6 +239,15 @@ def span_match(pred: str, gt: str) -> bool:
 
     if norm_g == norm_p or norm_g in norm_p or norm_p in norm_g:
         return True
+
+    # If ground truth specifies financial numbers (e.g., "$8.70", "0.9%") and prediction also
+    # contains financial numbers, but numeric_match failed, do not allow pure token overlap
+    # to declare a wrong number as correct on short numerical answers.
+    if len(gt.split()) <= 10:
+        gt_nums = [n for n in extract_numbers(gt) if not (1900 <= n <= 2099 and n.is_integer())]
+        pred_nums = [n for n in extract_numbers(pred) if not (1900 <= n <= 2099 and n.is_integer())]
+        if gt_nums and pred_nums:
+            return False
 
     tokens_p = set(norm_p.split())
     tokens_g = set(norm_g.split())

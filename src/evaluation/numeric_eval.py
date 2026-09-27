@@ -15,17 +15,19 @@ logger = get_logger(__name__)
 
 # Patterns for parsing financial numbers
 _MULTIPLIERS = {
-    "thousand": 1e3,
-    "thousands": 1e3,
-    "million": 1e6,
-    "millions": 1e6,
-    "billion": 1e9,
-    "billions": 1e9,
-    "trillion": 1e12,
     "trillions": 1e12,
-    "k": 1e3,
-    "m": 1e6,
+    "trillion": 1e12,
+    "billions": 1e9,
+    "billion": 1e9,
+    "millions": 1e6,
+    "million": 1e6,
+    "thousands": 1e3,
+    "thousand": 1e3,
+    "bn": 1e9,
+    "mn": 1e6,
     "b": 1e9,
+    "m": 1e6,
+    "k": 1e3,
     "t": 1e12,
 }
 
@@ -34,15 +36,24 @@ def extract_numbers(text: str) -> list[float]:
     """Extract all candidate financial numbers from text."""
     if not text:
         return []
+    # Strip footnote citations like [1], [2], [12]
+    cleaned_text = re.sub(r"\[\d+\]", " ", text)
+    # Strip SEC form designations like 10-K, 10-Q, 8-K
+    cleaned_text = re.sub(r"\b\d+-[KQ]\b", " ", cleaned_text, flags=re.IGNORECASE)
+    # Strip Note references like Note 16, Notes 3 and 11
+    cleaned_text = re.sub(r"\bNotes?\s+\d+\b", " ", cleaned_text, flags=re.IGNORECASE)
+    # Avoid extracting company name '3M' as 3 million
+    cleaned_text = re.sub(r"\b3M\b|\b3M's\b", " ", cleaned_text, flags=re.IGNORECASE)
+
     tokens = re.findall(
-        r"[-−]?\$?\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|percent|billion|billions|million|millions|thousand|thousands|[bmk])?",
-        text,
+        r"[-−]?\$?\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|percent|trillions|trillion|billions|billion|millions|million|thousands|thousand|bn|mn|[bmkt])?",
+        cleaned_text,
         flags=re.IGNORECASE,
     )
     numbers: list[float] = []
     for token in tokens:
         token = token.strip().rstrip(".:;")
-        if token:
+        if token and token.upper() not in ("3M", "3M'S"):
             val = parse_financial_number(token)
             if val is not None:
                 numbers.append(val)
@@ -75,25 +86,38 @@ def numeric_match(
         diff = abs(val - target) / abs(target)
         if diff <= tolerance:
             return True
-        # Check scale multipliers (k, m, b) when one answer includes unit multiplier and other omitted it
-        for scale in (1e3, 1e6, 1e9, 1e-3, 1e-6, 1e-9):
+        # Check scale multipliers (k, m, b, t) when one answer includes unit multiplier and other omitted it
+        for scale in (1e3, 1e6, 1e9, 1e12, 1e-3, 1e-6, 1e-9, 1e-12):
             scaled_target = target * scale
             if abs(val - scaled_target) / abs(scaled_target) <= tolerance:
                 return True
         return False
 
+    exp_cands = extract_numbers(expected)
     exp_num = parse_financial_number(expected)
-    if exp_num is None:
+    if exp_num is not None and exp_num not in exp_cands:
+        exp_cands.insert(0, exp_num)
+
+    if not exp_cands:
         return False
 
+    pred_cands = extract_numbers(predicted)
     pred_num = parse_financial_number(predicted)
-    if pred_num is not None and _is_close(pred_num, exp_num):
-        return True
+    if pred_num is not None and pred_num not in pred_cands:
+        pred_cands.insert(0, pred_num)
 
-    # Fallback: scan candidate numbers in predicted text (useful when answer contains reasoning/citations)
-    for cand in extract_numbers(predicted):
-        if _is_close(cand, exp_num):
-            return True
+    if not pred_cands:
+        return False
+
+    for exp_val in exp_cands:
+        # Ignore standalone 4-digit calendar years (e.g. 2018, 2022) unless it is the only candidate
+        if len(exp_cands) > 1 and 1900 <= exp_val <= 2099 and exp_val.is_integer():
+            continue
+        for pred_val in pred_cands:
+            if len(pred_cands) > 1 and 1900 <= pred_val <= 2099 and pred_val.is_integer():
+                continue
+            if _is_close(pred_val, exp_val):
+                return True
 
     return False
 
@@ -116,6 +140,9 @@ def parse_financial_number(text: str) -> float | None:
         Parsed float value, or None if no number found.
     """
     if not text or not text.strip():
+        return None
+
+    if text.strip().upper() in ("3M", "3M'S"):
         return None
 
     # Check for structured JSON metrics block (from CRAG generator)
@@ -214,6 +241,8 @@ def evaluate_numeric_accuracy(
             "expected": gt,
             "parsed_predicted": parse_financial_number(pred),
             "parsed_expected": parse_financial_number(gt),
+            "extracted_predicted": extract_numbers(pred),
+            "extracted_expected": extract_numbers(gt),
             "match": is_match,
         })
 

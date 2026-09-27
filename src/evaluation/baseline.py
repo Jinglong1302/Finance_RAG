@@ -118,6 +118,7 @@ class NaiveRAG:
                     },
                 ],
                 temperature=0,
+                seed=42,
                 max_tokens=512,
             )
             answer = resp.choices[0].message.content or ""
