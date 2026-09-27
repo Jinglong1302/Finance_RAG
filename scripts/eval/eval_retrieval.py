@@ -129,6 +129,22 @@ def evaluate_one(
     result["Recall@10"] = recall_at_k(reranked, evidence_list, 10)
     result["MRR"] = mrr(reranked, evidence_list)
 
+    gold_rank = None
+    for r_idx, c in enumerate(reranked):
+        details = [check_chunk_evidence_detailed(c, ev) for ev in evidence_list]
+        if any(d["is_hit"] for d in details):
+            gold_rank = r_idx + 1
+            break
+    result["gold_evidence_rank"] = gold_rank
+
+    gold_candidate_rank = None
+    for r_idx, c in enumerate(candidates):
+        details = [check_chunk_evidence_detailed(c, ev) for ev in evidence_list]
+        if any(d["is_hit"] for d in details):
+            gold_candidate_rank = r_idx + 1
+            break
+    result["gold_candidate_rank"] = gold_candidate_rank
+
     chunks_diag = []
     for rank, c in enumerate(reranked[:5]):
         details = [check_chunk_evidence_detailed(c, ev) for ev in evidence_list]
@@ -293,9 +309,10 @@ def main() -> None:
             naive_results.append(nres)
 
         status = "✅" if res["Hit@5"] else "❌"
+        rank_info = f"Gold Rank: {res['gold_evidence_rank']}" if res.get("gold_evidence_rank") else f"Candidate Rank: {res.get('gold_candidate_rank', 'Not in top-25')}"
         console.print(
             f"  {status} Q{i+1:02d} [{ticker}] Hit@5={res['Hit@5']} "
-            f"MRR={res['MRR']:.2f} ({res['latency_s']}s)"
+            f"MRR={res['MRR']:.2f} ({res['latency_s']}s) | {rank_info}"
         )
 
     # Aggregate

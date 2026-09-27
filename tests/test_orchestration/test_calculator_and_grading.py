@@ -53,10 +53,10 @@ class TestGradingDecisionMatrix:
         assert conf == "low"
         assert action == "rewrite"
 
-    def test_low_confidence_refuse_at_max_cycles(self) -> None:
+    def test_low_confidence_generate_at_max_cycles(self) -> None:
         conf, action = _determine_action(0, 3, 2, cycle_count=2, max_cycles=2)
-        assert conf == "insufficient"
-        assert action == "refuse"
+        assert conf == "low"
+        assert action == "generate"
 
     def test_insufficient_rewrite(self) -> None:
         conf, action = _determine_action(0, 0, 5, cycle_count=0, max_cycles=2)

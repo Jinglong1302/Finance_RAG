@@ -55,7 +55,8 @@ def query_rewriter_node(state: CRAGState) -> dict[str, Any]:
                     ),
                 },
             ],
-            temperature=0.3,  # Slight creativity for alternative phrasing
+            temperature=0,
+            seed=42,
         )
 
         rewritten = response.choices[0].message.content or query
