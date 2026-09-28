@@ -42,10 +42,15 @@ def make_retriever_node(searcher: HybridSearcher):
 
         # Use rewritten query if this is a CRAG retry
         rewritten = state.get("rewritten_query")
+        orig_q = state.get("original_query", "")
         if rewritten:
             queries = [rewritten]
         else:
-            queries = state.get("sub_queries", [state.get("original_query", "")])
+            sub_qs = state.get("sub_queries", [])
+            if orig_q and orig_q not in sub_qs:
+                queries = [orig_q] + sub_qs
+            else:
+                queries = sub_qs or [orig_q]
 
         filters = state.get("structured_filters", {})
         # Always fetch a broad candidate pool (top-25) for the reranker to refine

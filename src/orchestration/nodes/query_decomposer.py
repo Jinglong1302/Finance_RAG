@@ -17,6 +17,7 @@ from src.orchestration.prompts.decomposition import (
     DECOMPOSITION_USER_PROMPT,
 )
 from src.orchestration.state import CRAGState
+from src.retrieval.query_expansion import expand_financial_query
 from src.utils.logging import get_logger
 from src.utils.tokens import cost_from_usage
 
@@ -67,9 +68,10 @@ def query_decomposer_node(state: CRAGState) -> dict[str, Any]:
         cost, token_detail = cost_from_usage(response.usage, "gpt-4o")
 
         # Extract and validate fields
-        sub_queries = result.get("sub_queries", [query])
-        if not sub_queries:
-            sub_queries = [query]
+        raw_sub_queries = result.get("sub_queries", [query])
+        if not raw_sub_queries:
+            raw_sub_queries = [query]
+        sub_queries = [expand_financial_query(sq) for sq in raw_sub_queries]
 
         structured_filters = result.get("structured_filters", {})
         # Remove null values from filters

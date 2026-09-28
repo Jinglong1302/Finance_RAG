@@ -52,6 +52,7 @@ def hallucination_guard_node(state: CRAGState) -> dict[str, Any]:
     client = OpenAI()
 
     try:
+        query = state.get("original_query", "")
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -59,7 +60,7 @@ def hallucination_guard_node(state: CRAGState) -> dict[str, Any]:
                 {
                     "role": "user",
                     "content": GUARDRAIL_USER_PROMPT.format(
-                        answer=answer, context=context
+                        query=query, answer=answer, context=context
                     ),
                 },
             ],
