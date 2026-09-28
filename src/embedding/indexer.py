@@ -35,6 +35,7 @@ _INDEXED_FIELDS = {
     "filing_type": PayloadSchemaType.KEYWORD,
     "fiscal_year": PayloadSchemaType.INTEGER,
     "section": PayloadSchemaType.KEYWORD,
+    "section_type": PayloadSchemaType.KEYWORD,
     "chunk_type": PayloadSchemaType.KEYWORD,
 }
 

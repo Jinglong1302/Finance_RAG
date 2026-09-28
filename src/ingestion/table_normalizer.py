@@ -111,14 +111,22 @@ def find_date_header_row(grid: list[list[str]]) -> tuple[int, list[int]]:
 
     best_row_idx = -1
     best_starts: list[int] = []
+    has_year = False
 
     for r_idx in range(min(6, len(grid))):
         row = grid[r_idx]
         starts = [c_idx for c_idx, val in enumerate(row) if val and (year_re.search(val) or date_word_re.search(val))]
+        row_has_year = any(year_re.search(val) for val in row if val)
         # If this row contains multiple date/year headers (e.g. 2023, 2022, 2021)
-        if len(starts) >= 2 and len(starts) > len(best_starts):
-            best_row_idx = r_idx
-            best_starts = starts
+        if len(starts) >= 2:
+            # Prefer rows that explicitly contain 4-digit years over rows that only have date words
+            if row_has_year and not has_year:
+                best_row_idx = r_idx
+                best_starts = starts
+                has_year = True
+            elif row_has_year == has_year and len(starts) >= len(best_starts):
+                best_row_idx = r_idx
+                best_starts = starts
 
     # If no multi-date row found, fallback to first row with any year
     if best_row_idx == -1:

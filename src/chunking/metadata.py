@@ -22,6 +22,10 @@ class ChunkMetadata(BaseModel):
     filing_type: str = Field(description="SEC filing type, e.g. '10-K'")
     fiscal_year: int | None = Field(default=None, description="Fiscal year of the filing")
     section: str = Field(description="Section ID, e.g. 'item8_financial_statements'")
+    section_type: str = Field(
+        default="other",
+        description="Standardized section category: balance_sheet, income_statement, cash_flow_statement, mda, notes, risk_factors, cover_page, other",
+    )
     chunk_type: str = Field(description="'child' or 'parent'")
 
     # === Unindexed payload fields ===
@@ -76,3 +80,70 @@ class Chunk(BaseModel):
             f"type={self.metadata.chunk_type}, "
             f"tokens={self.metadata.token_count})"
         )
+
+
+def classify_section_type(
+    section_id: str,
+    section_name: str,
+    title: str = "",
+    text: str = "",
+) -> str:
+    """Classify a chunk into a standardized section_type.
+
+    Categories:
+    - balance_sheet
+    - income_statement
+    - cash_flow_statement
+    - equity_statement
+    - mda
+    - notes
+    - risk_factors
+    - cover_page
+    - other
+    """
+    s_id = (section_id or "").lower()
+    s_name = (section_name or "").lower()
+    t_title = (title or "").lower()
+
+    # Notes sections
+    if "notes" in s_id or s_id == "item8_notes" or "notes to" in s_name or t_title.startswith("note "):
+        return "notes"
+
+    # MD&A sections
+    if "mda" in s_id or "management" in s_name:
+        return "mda"
+
+    # Risk Factors
+    if "risk" in s_id or "risk factors" in s_name:
+        return "risk_factors"
+
+    # Cover page
+    if "cover" in s_id or "cover_page" in s_id:
+        return "cover_page"
+
+    # Only primary financial statements (Item 8 / Item 1) get statement-specific types
+    if "financial_statements" in s_id or s_id in ("item8", "item1", "item8_financial_statements", "item1_financial_statements"):
+        combined_title = f"{t_title} {text[:200].lower()}"
+        if "balance sheet" in combined_title or "financial position" in combined_title:
+            return "balance_sheet"
+        if "cash flow" in combined_title or "cash flows" in combined_title:
+            return "cash_flow_statement"
+        if any(
+            k in combined_title
+            for k in [
+                "statement of income",
+                "statements of income",
+                "statement of operations",
+                "statements of operations",
+                "statement of earnings",
+                "statements of earnings",
+                "income statement",
+            ]
+        ):
+            return "income_statement"
+        if "equity" in combined_title:
+            return "equity_statement"
+        return "financial_statements"
+
+    return "other"
+

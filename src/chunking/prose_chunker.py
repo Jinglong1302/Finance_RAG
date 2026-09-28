@@ -129,6 +129,9 @@ class ProseChunker:
             note_refs = self._detect_note_references(text)
             token_count = count_tokens(text)
 
+            from src.chunking.metadata import classify_section_type
+            s_type = classify_section_type(section_id, section_name, "", text)
+
             metadata = ChunkMetadata(
                 company_ticker=filing_meta["company_ticker"],
                 company_name=filing_meta.get("company_name", ""),
@@ -136,6 +139,7 @@ class ProseChunker:
                 fiscal_year=filing_meta.get("fiscal_year", 0),
                 filing_date=filing_meta.get("filing_date", ""),
                 section=section_id,
+                section_type=s_type,
                 section_title=section_name,
                 chunk_type="child",
                 chunk_id=chunk_id,

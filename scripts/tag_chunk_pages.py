@@ -44,34 +44,49 @@ def find_chunk_page(
     chunk_text: str,
     raw_content: str,
     page_break_offsets: list[int],
+    raw_lower: str | None = None,
 ) -> int | None:
     """Find the source page number of a chunk within the raw HTML."""
-    words = [w for w in re.findall(r"[a-zA-Z]{3,}", chunk_text)]
-    if not words:
-        return None
+    from collections import Counter
 
-    # 1. Search for consecutive windows of 4 salient words across HTML tags
-    for i in range(min(5, max(1, len(words) - 3))):
-        sub_words = words[i : i + 4]
-        pat = r".{0,60}".join(re.escape(w) for w in sub_words)
-        m = re.search(pat, raw_content, re.IGNORECASE)
-        if m:
-            return bisect_right(page_break_offsets, m.start())
+    if raw_lower is None:
+        raw_lower = raw_content.lower()
 
-    # 2. Try distinctive non-markdown lines from chunk_text
-    for line in chunk_text.splitlines():
-        line = line.strip()
-        if len(line) >= 25 and not line.startswith(("#", "|")):
-            idx = raw_content.find(line[:50])
-            if idx != -1:
-                return bisect_right(page_break_offsets, idx)
+    # 1. Clean chunk_text: strip markdown headers (# ...) and table formatting lines
+    lines = [
+        l.strip()
+        for l in chunk_text.splitlines()
+        if not l.strip().startswith(("#", "| :", "|:")) and len(l.strip()) >= 15
+    ]
+    phrases: list[str] = []
+    for l in lines:
+        cleaned = re.sub(r"[|:_\-]+", " ", l).strip().lower()
+        parts = [p.strip() for p in cleaned.split("  ") if len(p.strip()) >= 15 and not p.strip().isdigit()]
+        phrases.extend(parts)
 
-    # 3. Fallback to first 3 salient words
-    if len(words) >= 3:
-        pat = r".{0,80}".join(re.escape(w) for w in words[:3])
-        m = re.search(pat, raw_content, re.IGNORECASE)
-        if m:
-            return bisect_right(page_break_offsets, m.start())
+    matched_pages: list[int] = []
+    for phrase in phrases:
+        p_sub = phrase[:40].strip()
+        if len(p_sub) < 12:
+            continue
+        idx = raw_lower.find(p_sub)
+        if idx != -1:
+            pg = bisect_right(page_break_offsets, idx)
+            matched_pages.append(pg)
+
+    if matched_pages:
+        deeper = [p for p in matched_pages if p > 2]
+        if deeper:
+            return Counter(deeper).most_common(1)[0][0]
+        return Counter(matched_pages).most_common(1)[0][0]
+
+    # Fallback to distinct words
+    words = [w for w in re.findall(r"[a-zA-Z]{4,}", chunk_text) if w.lower() not in ("line", "item", "table", "content")]
+    for i in range(0, min(10, max(1, len(words) - 2)), 2):
+        phrase = " ".join(words[i : i + 3]).lower()
+        idx = raw_lower.find(phrase)
+        if idx != -1:
+            return bisect_right(page_break_offsets, idx)
 
     return None
 
@@ -91,6 +106,7 @@ def tag_filing_chunks(
         return 0
 
     content = html_path.read_text(encoding="utf-8", errors="ignore")
+    raw_lower = content.lower()
     pb_offsets = build_page_index(content)
     if not pb_offsets:
         logger.info(f"No page breaks found in {html_path.name}")
@@ -130,7 +146,7 @@ def tag_filing_chunks(
                 continue
 
             text = payload.get("text", "")
-            page_num = find_chunk_page(text, content, pb_offsets)
+            page_num = find_chunk_page(text, content, pb_offsets, raw_lower=raw_lower)
             if page_num is not None:
                 client.set_payload(
                     collection_name=collection_name,

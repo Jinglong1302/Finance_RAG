@@ -196,6 +196,7 @@ class NoteChunker:
             "fiscal_year": filing_meta.get("fiscal_year", 0),
             "filing_date": filing_meta.get("filing_date", ""),
             "section": section_id,
+            "section_type": "notes",
             "section_title": f"Note {note_num}: {note_title}",
             "content_type": "note",
             "note_id": note_id,
