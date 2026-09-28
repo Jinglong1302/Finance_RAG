@@ -63,11 +63,58 @@ def check_chunk_evidence_detailed(
     page_match = False
     if ev_page is not None and chunk_page is not None:
         try:
-            # Tolerant to +-1 page shift (0-indexed vs 1-indexed, cover pages)
+            # Informational only: page alignment is recorded for diagnostics but NOT used to declare a hit
             if chunk_page == ev_page or abs(int(chunk_page) - int(ev_page)) <= 1:
                 page_match = True
         except (ValueError, TypeError):
             pass
+
+    # Normalize texts for containment checking
+    norm_chunk = re.sub(r"\s+", " ", chunk_text).strip().lower()
+    norm_ev = re.sub(r"\s+", " ", ev_text).strip().lower() if ev_text else ""
+
+    containment_match = False
+    if norm_ev and norm_chunk:
+        # 1. Exact string containment
+        if norm_ev in norm_chunk or norm_chunk in norm_ev:
+            containment_match = True
+        # 2. Significant line containment (>= 20 chars from evidence)
+        elif ev_text:
+            ev_lines = [re.sub(r"\s+", " ", l).strip().lower() for l in ev_text.splitlines() if len(re.sub(r"\s+", " ", l).strip()) >= 20]
+            for l in ev_lines:
+                if l in norm_chunk:
+                    containment_match = True
+                    break
+
+        # 3. Probe containment
+        if not containment_match:
+            probe = _probe(ev_text)
+            if probe and probe in norm_chunk:
+                containment_match = True
+
+    # 4. Number containment from answer / evidence
+    number_match = False
+    ev_ans = ""
+    if isinstance(evidence_entry, dict):
+        ev_ans = str(evidence_entry.get("answer", ""))
+
+    if ev_ans and norm_chunk:
+        ans_nums = re.findall(r"\d+(?:,\d{3})*(?:\.\d+)?", ev_ans)
+        target_nums = []
+        for n_str in ans_nums:
+            raw_n = n_str.replace(",", "")
+            try:
+                val = float(raw_n)
+                if 1990 <= val <= 2030 and val.is_integer():
+                    continue
+                target_nums.append((n_str, raw_n))
+            except ValueError:
+                pass
+        for orig, raw in target_nums:
+            pattern = r"(?<!\d)" + re.escape(orig) + r"(?!\d)|(?<!\d)" + re.escape(raw) + r"(?!\d)"
+            if re.search(pattern, norm_chunk):
+                number_match = True
+                break
 
     overlap_match = False
     overlap_ratio = 0.0
@@ -79,15 +126,15 @@ def check_chunk_evidence_detailed(
             if overlap_ratio >= text_overlap_threshold:
                 overlap_match = True
 
-        probe = _probe(ev_text)
-        if probe and probe in chunk_text.lower():
-            overlap_match = True
-
-    is_hit = page_match or overlap_match
+    # Gold match strictly requires evidence-text containment, number containment, or high text overlap.
+    # Page tolerance is NOT used to declare a hit.
+    is_hit = containment_match or number_match or overlap_match
     return {
         "is_hit": is_hit,
         "page_match": page_match,
         "overlap_match": overlap_match,
+        "containment_match": containment_match,
+        "number_match": number_match,
         "overlap_ratio": round(overlap_ratio, 4),
         "chunk_page": chunk_page,
         "evidence_page": ev_page,
