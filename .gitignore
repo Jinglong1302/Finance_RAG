@@ -53,3 +53,5 @@ reports/
 
 # === Scratch scripts ===
 scratch/
+
+*.snapshot
