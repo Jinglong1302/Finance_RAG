@@ -29,6 +29,7 @@ qdrant_data/
 # === Data ===
 data/raw/
 data/processed/
+data/qdrant_db/
 
 # === Models (downloaded at runtime) ===
 models/
