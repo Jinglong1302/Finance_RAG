@@ -22,9 +22,13 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import argparse
 import json
+import os
 import time
 from datetime import datetime
 from typing import Any
+
+import torch
+torch.set_num_threads(os.cpu_count() or 8)
 
 from rich.console import Console
 from rich.table import Table
@@ -161,6 +165,20 @@ def _collect_crag_data(
             ground_truths.append(sample.ground_truth)
             crag_results.append(result)
 
+            try:
+                ckpt_dir = Path("results/eval/generation_holdout")
+                ckpt_dir.mkdir(parents=True, exist_ok=True)
+                with open(ckpt_dir / "running_checkpoint.jsonl", "a", encoding="utf-8") as ckpt_f:
+                    ckpt_f.write(json.dumps({
+                        "index": i + 1,
+                        "question": sample.question,
+                        "ground_truth": sample.ground_truth,
+                        "raw_answer": raw,
+                        "latency_s": round(latency, 2),
+                    }) + "\n")
+            except Exception:
+                pass
+
             console.print(f"  CRAG Q{i+1:03d}: {latency:.1f}s")
         except Exception as e:
             console.print(f"  [red]CRAG Q{i+1:03d} error: {e}[/red]")
@@ -223,6 +241,7 @@ def main() -> None:
         help="Which dataset to evaluate: 'fb' (27 in-corpus FB), 'apple' (50 AAPL custom), or 'all'",
     )
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--offset", type=int, default=0, help="Starting index in dataset")
     parser.add_argument("--no-baseline", action="store_true")
     parser.add_argument("--no-reranker", action="store_true", help="Bypass cross-encoder reranker")
     parser.add_argument("--skip-ragas", action="store_true", help="Skip Ragas (latency)")
@@ -241,6 +260,9 @@ def main() -> None:
         all_pairs.extend(_load_in_corpus_fb())
     if args.source in ("all", "apple"):
         all_pairs.extend((s, "AAPL") for s in _load_custom_eval())
+
+    if args.offset:
+        all_pairs = all_pairs[args.offset :]
 
     console.print(f"Total: {len(all_pairs)} questions")
 

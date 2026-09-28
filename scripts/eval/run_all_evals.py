@@ -87,19 +87,22 @@ def _load_latest(slice_key: str) -> dict[str, Any] | None:
 
 
 def _load_custom_aapl() -> dict[str, Any] | None:
-    """Load hand-curated Apple custom evaluation results and per-sample CSV."""
-    csv_path = Path("results/ragas_per_sample.csv")
+    """Load hand-curated Apple custom evaluation results and per-sample CSV.
+
+    Stale fallback to results/ragas_scores.json is strictly disallowed and fails loudly.
+    """
     scores_path = Path("results/ragas_scores.json")
-    if not csv_path.exists() and not scores_path.exists():
+    if scores_path.exists():
+        raise RuntimeError(
+            "Stale fallback detected: results/ragas_scores.json is present but deprecated. "
+            "Remove it or run the evaluation pipeline with fresh metrics."
+        )
+
+    csv_path = Path("results/ragas_per_sample.csv")
+    if not csv_path.exists():
         return None
 
     scores: dict[str, float] = {}
-    if scores_path.exists():
-        try:
-            scores = json.loads(scores_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-
     samples: list[dict[str, Any]] = []
     if csv_path.exists():
         try:

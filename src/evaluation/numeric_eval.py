@@ -214,31 +214,52 @@ def parse_financial_number(text: str) -> float | None:
         return None
 
 
+def is_numeric_answer(text: str) -> bool:
+    """Return True if text specifies a target financial number (excluding pure calendar years)."""
+    if not text:
+        return False
+    nums = [n for n in extract_numbers(text) if not (1900 <= n <= 2099 and n.is_integer())]
+    return len(nums) > 0
+
+
 def evaluate_numeric_accuracy(
     predictions: list[str],
     ground_truths: list[str],
     tolerance: float = 0.01,
+    scoped_to_numeric_only: bool = True,
 ) -> dict[str, Any]:
     """Evaluate numeric accuracy across a set of predictions.
+
+    When `scoped_to_numeric_only=True`, questions without numeric ground truths
+    are marked 'N/A' and excluded from the denominator.
 
     Args:
         predictions: List of predicted answer strings.
         ground_truths: List of ground truth answer strings.
         tolerance: Relative tolerance. Default: 1%.
+        scoped_to_numeric_only: Only calculate accuracy over numeric questions. Default: True.
 
     Returns:
-        Dict with accuracy, match count, and per-sample results.
+        Dict with accuracy, match count, total evaluated, and per-sample results.
     """
     results = []
-    matches = 0
+    numeric_matches = 0
+    numeric_count = 0
 
     for pred, gt in zip(predictions, ground_truths):
-        is_match = numeric_match(pred, gt, tolerance)
-        if is_match:
-            matches += 1
+        is_num = is_numeric_answer(gt)
+        if is_num:
+            numeric_count += 1
+            is_match: bool | str = numeric_match(pred, gt, tolerance)
+            if is_match:
+                numeric_matches += 1
+        else:
+            is_match = "N/A"
+
         results.append({
             "predicted": pred,
             "expected": gt,
+            "is_numeric": is_num,
             "parsed_predicted": parse_financial_number(pred),
             "parsed_expected": parse_financial_number(gt),
             "extracted_predicted": extract_numbers(pred),
@@ -246,12 +267,20 @@ def evaluate_numeric_accuracy(
             "match": is_match,
         })
 
-    total = len(predictions)
+    if scoped_to_numeric_only:
+        total = numeric_count
+        matches = numeric_matches
+    else:
+        total = len(predictions)
+        matches = numeric_matches
+
     accuracy = matches / total if total > 0 else 0.0
 
     return {
         "accuracy": accuracy,
         "matches": matches,
         "total": total,
+        "total_numeric": numeric_count,
+        "total_all": len(predictions),
         "per_sample": results,
     }
