@@ -106,18 +106,44 @@ def evaluate_one(
     ticker: str,
     searcher: HybridSearcher,
     reranker: CrossEncoderReranker | None,
+    expander: Any,
     top_k_retrieve: int = 25,
     top_k_rerank: int = 10,
 ) -> dict[str, Any]:
-    """Run CRAG retrieval + reranking for one question and compute metrics."""
-    candidates = searcher.search(
-        question,
-        filters={"company_ticker": ticker},
-        top_k=top_k_retrieve,
-    )
-    if reranker is not None:
-        reranked = reranker.rerank(question, candidates, top_k=top_k_rerank)
-    else:
+    from src.orchestration.nodes.query_decomposer import query_decomposer_node
+    from src.orchestration.nodes.retriever import make_retriever_node
+    from src.orchestration.nodes.reranker_node import make_reranker_node
+    from src.orchestration.state import CRAGState
+
+    state: CRAGState = {
+        "original_query": question,
+        "cycle_count": 0,
+        "cost_accumulated": 0.0,
+        "pipeline_trace": [],
+        "result_count": top_k_rerank,
+    }
+
+    # 1. Query decomposition
+    dec_out = query_decomposer_node(state)
+    state.update(dec_out)
+
+    # Ensure company_ticker filter is set for eval isolation
+    filters = state.setdefault("structured_filters", {})
+    if ticker and "company_ticker" not in filters:
+        filters["company_ticker"] = ticker
+
+    # 2. Real retriever node (subqueries + original query + section prefetch + RRF)
+    ret_node = make_retriever_node(searcher)
+    ret_out = ret_node(state)
+    state.update(ret_out)
+    candidates = state.get("search_results", [])
+
+    # 3. Real reranker node (cross-encoder + table-aware diversity + parent expansion)
+    rerank_node = make_reranker_node(reranker, expander)
+    rerank_out = rerank_node(state)
+    state.update(rerank_out)
+    reranked = state.get("reranked_results", [])
+    if not reranked and candidates:
         reranked = candidates[:top_k_rerank]
 
     from src.evaluation.metrics import check_chunk_evidence_detailed, hit_at_k, mrr, recall_at_k
@@ -136,14 +162,50 @@ def evaluate_one(
             gold_rank = r_idx + 1
             break
     result["gold_evidence_rank"] = gold_rank
+    result["post_rerank_rank"] = gold_rank
 
     gold_candidate_rank = None
+    gold_dense_rank = None
+    gold_sparse_rank = None
+    gold_rrf_rank = None
     for r_idx, c in enumerate(candidates):
         details = [check_chunk_evidence_detailed(c, ev) for ev in evidence_list]
         if any(d["is_hit"] for d in details):
             gold_candidate_rank = r_idx + 1
+            meta = c.get("metadata", {}) if isinstance(c, dict) else getattr(c, "metadata", {})
+            gold_dense_rank = meta.get("dense_rank")
+            gold_sparse_rank = meta.get("sparse_rank")
+            gold_rrf_rank = meta.get("rrf_rank")
             break
+
+    # If not in top candidates, check searcher's broader query diagnostic pools
+    if gold_candidate_rank is None and hasattr(searcher, "_last_diagnostics"):
+        diag = getattr(searcher, "_last_diagnostics", {})
+        for idx, p in enumerate(diag.get("dense_points", [])):
+            c_dict = {"text": (p.payload or {}).get("text", ""), "metadata": p.payload or {}}
+            if any(check_chunk_evidence_detailed(c_dict, ev)["is_hit"] for ev in evidence_list):
+                gold_dense_rank = idx + 1
+                break
+        for idx, p in enumerate(diag.get("sparse_points", [])):
+            c_dict = {"text": (p.payload or {}).get("text", ""), "metadata": p.payload or {}}
+            if any(check_chunk_evidence_detailed(c_dict, ev)["is_hit"] for ev in evidence_list):
+                gold_sparse_rank = idx + 1
+                break
+        sorted_pids = diag.get("sorted_pids", [])
+        point_map = diag.get("point_map", {})
+        for idx, pid in enumerate(sorted_pids):
+            p = point_map.get(pid)
+            if p:
+                c_dict = {"text": (p.payload or {}).get("text", ""), "metadata": p.payload or {}}
+                if any(check_chunk_evidence_detailed(c_dict, ev)["is_hit"] for ev in evidence_list):
+                    gold_rrf_rank = idx + 1
+                    break
+
     result["gold_candidate_rank"] = gold_candidate_rank
+    result["in_top_25"] = bool(gold_candidate_rank is not None and gold_candidate_rank <= 25)
+    result["gold_dense_rank"] = gold_dense_rank
+    result["gold_sparse_rank"] = gold_sparse_rank
+    result["gold_rrf_rank"] = gold_rrf_rank
 
     chunks_diag = []
     for rank, c in enumerate(reranked[:5]):
@@ -151,6 +213,8 @@ def evaluate_one(
         is_hit = any(d["is_hit"] for d in details)
         page_match = any(d["page_match"] for d in details)
         overlap_match = any(d["overlap_match"] for d in details)
+        containment_match = any(d.get("containment_match", False) for d in details)
+        number_match = any(d.get("number_match", False) for d in details)
         max_overlap = max((d["overlap_ratio"] for d in details), default=0.0)
         pg_num = getattr(c, "metadata", {}).get("page_number") if hasattr(c, "metadata") else c.get("metadata", {}).get("page_number")
         sec = (getattr(c, "metadata", {}).get("section_title") or getattr(c, "metadata", {}).get("section_id", "N/A")) if hasattr(c, "metadata") else (c.get("metadata", {}).get("section_title") or c.get("metadata", {}).get("section_id", "N/A"))
@@ -166,6 +230,8 @@ def evaluate_one(
             "is_hit": is_hit,
             "page_match": page_match,
             "overlap_match": overlap_match,
+            "containment_match": containment_match,
+            "number_match": number_match,
             "overlap_ratio": max_overlap,
         })
     result["retrieved_chunks"] = chunks_diag
@@ -219,25 +285,28 @@ def evaluate_one_naive(
 
 
 def _extract_evidence_entries(row: dict) -> list[dict[str, Any]]:
-    """Pull evidence entries (text + page_num) from a FinanceBench row."""
+    """Pull evidence entries (text + page_num + answer) from a FinanceBench row."""
     evidences = row.get("evidence", [])
+    ans = str(row.get("answer", ""))
     if isinstance(evidences, str):
-        return [{"evidence_text": evidences, "evidence_page_num": None}] if evidences else []
+        return [{"evidence_text": evidences, "evidence_page_num": None, "answer": ans}] if evidences else []
     entries = []
     for e in evidences:
         if isinstance(e, dict):
             entries.append({
                 "evidence_text": e.get("evidence_text", ""),
                 "evidence_page_num": e.get("evidence_page_num"),
+                "answer": ans,
             })
         elif isinstance(e, str) and e:
-            entries.append({"evidence_text": e, "evidence_page_num": None})
+            entries.append({"evidence_text": e, "evidence_page_num": None, "answer": ans})
     return entries
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Retrieval evaluation slice")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--offset", type=int, default=0, help="Starting index in dataset")
     parser.add_argument("--no-baseline", action="store_true")
     parser.add_argument("--no-reranker", action="store_true", help="Bypass cross-encoder reranker")
     parser.add_argument("--output", default="results/eval/retrieval")
@@ -251,6 +320,8 @@ def main() -> None:
 
     # Load data
     rows = load_in_corpus_financebench()
+    if args.offset:
+        rows = rows[args.offset :]
     if args.limit:
         rows = rows[: args.limit]
     console.print(f"Loaded {len(rows)} in-corpus FinanceBench questions")
@@ -259,12 +330,14 @@ def main() -> None:
     from qdrant_client import QdrantClient
     from src.embedding.embedder import BGEEmbedder
     from src.retrieval.hybrid_search import HybridSearcher
+    from src.retrieval.parent_expander import ParentExpander
     from src.retrieval.reranker import CrossEncoderReranker
     from src.evaluation.baseline import NaiveRAG
 
     qdrant = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
     embedder = BGEEmbedder(model_name=settings.embedding_model)
     searcher = HybridSearcher(qdrant, embedder, settings.qdrant_collection)
+    expander = ParentExpander(qdrant, settings.qdrant_collection)
     use_reranker = not args.no_reranker and settings.reranker_model.lower() not in ("none", "", "null", "false")
     reranker = CrossEncoderReranker(model_name=settings.reranker_model) if use_reranker else None
     if not use_reranker:
@@ -294,9 +367,9 @@ def main() -> None:
             console.print(f"[yellow]  Q{i+1:02d} [{ticker}]: excluded: fiscal year not indexed ({doc_name})[/yellow]")
             continue
 
-        # CRAG retrieval
+        # CRAG retrieval (real path: decomposition + retriever_node + reranker_node)
         t0 = time.perf_counter()
-        res = evaluate_one(q, evidence_entries, ticker, searcher, reranker)
+        res = evaluate_one(q, evidence_entries, ticker, searcher, reranker, expander)
         res["latency_s"] = round(time.perf_counter() - t0, 3)
         res["doc_period"] = row.get("doc_period", "")
         crag_results.append(res)
