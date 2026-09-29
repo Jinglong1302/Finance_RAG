@@ -79,17 +79,28 @@ def _format_contexts_for_ragas(enriched_contexts: list[Any]) -> list[str]:
     return formatted if formatted else [""]
 
 
+# Uniform refusal detector — covers CRAG, ablation-a/b, naive RAG, and
+# the naive baseline's canonical phrase "Insufficient information in context."
+_REFUSAL_PHRASES = (
+    "could not find sufficient evidence",
+    "insufficient evidence",
+    "insufficient information",  # catches naive's "Insufficient information in context."
+    "not enough information",
+    "no information found",
+    "unable to locate",
+    "cannot answer",
+    "i cannot determine",
+    "not available in the provided",
+    "unable to answer",
+    "do not have access to",
+    "not provided in the context",
+)
+
+
 def _is_refusal(answer: str) -> bool:
-    """Check if an answer is an explicit model refusal/abstention."""
-    refusal_phrases = (
-        "could not find sufficient evidence",
-        "insufficient evidence",
-        "not enough information",
-        "no information found",
-        "unable to locate",
-    )
-    lower = answer.lower()
-    return any(p in lower for p in refusal_phrases)
+    """Uniform refusal/abstention detector for all pipeline variants."""
+    lower = answer.lower().strip()
+    return any(p in lower for p in _REFUSAL_PHRASES)
 
 
 def run_ragas_evaluation(
