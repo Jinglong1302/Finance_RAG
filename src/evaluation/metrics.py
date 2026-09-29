@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 def check_chunk_evidence_detailed(
     chunk: Any,
     evidence_entry: dict[str, Any] | str,
-    text_overlap_threshold: float = 0.50,
+    text_overlap_threshold: float = 0.65,
 ) -> dict[str, Any]:
     """Check a chunk against a single evidence entry with granular diagnostics.
 
