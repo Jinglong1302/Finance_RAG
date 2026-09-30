@@ -56,10 +56,16 @@ class HybridSearcher:
         client: QdrantClient,
         embedder: BGEEmbedder,
         collection_name: str = "sec_filings",
+        dense_weight: float = 1.0,
+        sparse_weight: float = 0.3,
+        rrf_k: int = 60,
     ) -> None:
         self.client = client
         self.embedder = embedder
         self.collection_name = collection_name
+        self.dense_weight = dense_weight
+        self.sparse_weight = sparse_weight
+        self.rrf_k = rrf_k
 
     def search(
         self,
@@ -81,8 +87,13 @@ class HybridSearcher:
         Returns:
             List of SearchResult objects, sorted by RRF score descending.
         """
+        # Expand financial acronyms for filing vocabulary alignment
+        from src.retrieval.query_expansion import expand_financial_query
+
+        search_query = expand_financial_query(query)
+
         # Generate query embeddings
-        dense_vector, sparse_weights = self.embedder.embed_query(query)
+        dense_vector, sparse_weights = self.embedder.embed_query(search_query)
 
         # Build Qdrant filter
         qdrant_filter = self._build_qdrant_filter(filters)
@@ -102,47 +113,140 @@ class HybridSearcher:
         sparse_indices = list(sparse_weights.keys())
         sparse_values = list(sparse_weights.values())
 
-        # Perform hybrid search with RRF fusion
+        # Retrieve candidates independently from dense and sparse streams
+        fetch_limit = max(top_k * 4, 100)
+        implied_section = self._detect_implied_section_type(query)
+
         try:
-            results = self.client.query_points(
+            dense_points = self.client.query_points(
                 collection_name=self.collection_name,
-                prefetch=[
-                    models.Prefetch(
-                        query=dense_vector,
-                        using="dense",
-                        limit=top_k,
-                        filter=qdrant_filter,
+                query=dense_vector,
+                using="dense",
+                limit=fetch_limit,
+                query_filter=qdrant_filter,
+                with_payload=True,
+            ).points
+
+            sparse_points = []
+            if sparse_indices:
+                sparse_points = self.client.query_points(
+                    collection_name=self.collection_name,
+                    query=SparseVector(
+                        indices=sparse_indices,
+                        values=sparse_values,
                     ),
-                    models.Prefetch(
+                    using="sparse",
+                    limit=fetch_limit,
+                    query_filter=qdrant_filter,
+                    with_payload=True,
+                ).points
+
+            # If query implies a specific statement, prefetch statement candidates to guarantee
+            # they are prioritized and not crowded out before RRF scoring
+            if implied_section:
+                sec_filter = Filter(
+                    must=(qdrant_filter.must or []) + [
+                        FieldCondition(key="section_type", match=MatchValue(value=implied_section))
+                    ]
+                )
+                sec_dense = self.client.query_points(
+                    collection_name=self.collection_name,
+                    query=dense_vector,
+                    using="dense",
+                    limit=25,
+                    query_filter=sec_filter,
+                    with_payload=True,
+                ).points
+                sec_sparse = []
+                if sparse_indices:
+                    sec_sparse = self.client.query_points(
+                        collection_name=self.collection_name,
                         query=SparseVector(
                             indices=sparse_indices,
                             values=sparse_values,
                         ),
                         using="sparse",
-                        limit=top_k,
-                        filter=qdrant_filter,
-                    ),
-                ],
-                query=models.FusionQuery(fusion=models.Fusion.RRF),
-                limit=top_k,
-                with_payload=True,
-            )
+                        limit=25,
+                        query_filter=sec_filter,
+                        with_payload=True,
+                    ).points
+
+                # Prioritize section candidates at the front of candidate streams
+                seen_dense = set()
+                merged_dense = []
+                for p in sec_dense:
+                    seen_dense.add(p.id)
+                    merged_dense.append(p)
+                for p in dense_points:
+                    if p.id not in seen_dense:
+                        seen_dense.add(p.id)
+                        merged_dense.append(p)
+                dense_points = merged_dense
+
+                seen_sparse = set()
+                merged_sparse = []
+                for p in sec_sparse:
+                    seen_sparse.add(p.id)
+                    merged_sparse.append(p)
+                for p in sparse_points:
+                    if p.id not in seen_sparse:
+                        seen_sparse.add(p.id)
+                        merged_sparse.append(p)
+                sparse_points = merged_sparse
         except Exception as e:
-            logger.error(f"Hybrid search failed: {e}")
+            logger.error(f"Hybrid search queries failed: {e}")
             return []
+
+        # Client-side weighted RRF fusion (default: dense=1.0, sparse=0.3, k=60)
+        scores: dict[Any, float] = {}
+        point_map: dict[Any, Any] = {}
+
+        for rank, p in enumerate(dense_points):
+            pid = p.id
+            point_map[pid] = p
+            scores[pid] = scores.get(pid, 0.0) + self.dense_weight * (1.0 / (self.rrf_k + rank + 1))
+
+        for rank, p in enumerate(sparse_points):
+            pid = p.id
+            point_map[pid] = p
+            scores[pid] = scores.get(pid, 0.0) + self.sparse_weight * (1.0 / (self.rrf_k + rank + 1))
+
+        # Statement type boosting when query implies a specific financial statement
+        if implied_section:
+            for pid, score in list(scores.items()):
+                payload = point_map[pid].payload or {}
+                if payload.get("section_type") == implied_section:
+                    scores[pid] = score * 1.5
+
+        sorted_pids = sorted(scores.keys(), key=lambda pid: scores[pid], reverse=True)
+        top_pids = sorted_pids[:top_k]
+
+        dense_rank_map = {p.id: idx + 1 for idx, p in enumerate(dense_points)}
+        sparse_rank_map = {p.id: idx + 1 for idx, p in enumerate(sparse_points)}
+        rrf_rank_map = {pid: idx + 1 for idx, pid in enumerate(sorted_pids)}
+
+        self._last_diagnostics = {
+            "dense_points": dense_points,
+            "sparse_points": sparse_points,
+            "sorted_pids": sorted_pids,
+            "point_map": point_map,
+        }
 
         # Convert to SearchResult objects
         search_results: list[SearchResult] = []
-        for point in results.points:
+        for pid in top_pids:
+            point = point_map[pid]
             payload = point.payload or {}
+            meta = {k: v for k, v in payload.items() if k != "text"}
+            meta["dense_rank"] = dense_rank_map.get(pid)
+            meta["sparse_rank"] = sparse_rank_map.get(pid)
+            meta["rrf_rank"] = rrf_rank_map.get(pid)
             search_results.append(
                 SearchResult(
                     chunk_id=payload.get("chunk_id", ""),
                     text=payload.get("text", ""),
-                    metadata={
-                        k: v for k, v in payload.items() if k != "text"
-                    },
-                    score=point.score if point.score is not None else 0.0,
+                    metadata=meta,
+                    score=scores[pid],
                 )
             )
 
@@ -235,3 +339,29 @@ class HybridSearcher:
             return None
 
         return Filter(must=conditions)
+
+    @staticmethod
+    def _detect_implied_section_type(query: str) -> str | None:
+        """Detect if the query explicitly asks for a financial statement type."""
+        q_lower = query.lower()
+        if (
+            "balance sheet" in q_lower
+            or "statement of financial position" in q_lower
+            or "statements of financial position" in q_lower
+        ):
+            return "balance_sheet"
+        if "cash flow" in q_lower or "statement of cash flows" in q_lower or "statements of cash flows" in q_lower:
+            return "cash_flow_statement"
+        if (
+            "income statement" in q_lower
+            or "statement of income" in q_lower
+            or "statements of income" in q_lower
+            or "statement of operations" in q_lower
+            or "statements of operations" in q_lower
+            or "statement of earnings" in q_lower
+            or "statements of earnings" in q_lower
+            or "p&l statement" in q_lower
+            or "p&l" in q_lower
+        ):
+            return "income_statement"
+        return None

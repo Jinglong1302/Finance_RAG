@@ -12,6 +12,9 @@ IMPORTANT RULES:
 - Decompose by ENTITY, not by entity×year.
   CORRECT: ["Apple total revenue 2022 2023 2024", "Microsoft total revenue 2022 2023 2024"]
   WRONG: ["Apple revenue 2022", "Apple revenue 2023", "Apple revenue 2024", ...]
+- For conceptual or ratio questions (e.g. capital intensity, liquidity, margin drivers), decompose into focused sub-queries for the underlying financial statement metrics (e.g., capex, PP&E, revenue, assets).
+- Expand common financial abbreviations/acronyms to their official SEC filing equivalents in sub-queries (e.g., 'net PPNE' -> 'property, plant and equipment, net'; 'capex' -> 'capital expenditures purchases of property, plant and equipment'; 'COGS' -> 'cost of goods sold cost of sales'; 'SG&A' -> 'selling, general and administrative expenses').
+- If the question explicitly specifies a target financial statement (e.g., 'cash flow statement', 'balance sheet', 'income statement'/'statement of operations'), preserve the exact statement phrase in the sub-query to facilitate section routing.
 - Use standard ticker symbols (AAPL, MSFT, NVDA, AMZN, GOOGL, META, etc.)
 - If no specific year is mentioned, do NOT set fiscal_year filter.
 - If no specific company is mentioned, do NOT set company_ticker filter.

@@ -240,15 +240,12 @@ class SECDownloader:
                     header = f.read(4096)
 
                 period_match = re.search(
-                    r"<PERIOD-OF-REPORT>\s*(\d{4})-?(\d{2})-?(\d{2})",
+                    r"(?:<PERIOD-OF-REPORT>|CONFORMED\s+PERIOD\s+OF\s+REPORT:\s*)(\d{4})-?(\d{2})-?(\d{2})",
                     header,
                     re.IGNORECASE,
                 )
                 if period_match:
                     year = int(period_match.group(1))
-                    month = int(period_match.group(2))
-                    # For 10-K: fiscal year = the year in PERIOD-OF-REPORT
-                    # (Apple FY2024 ends Sep 2024, filed Nov 2024)
                     return year
             except Exception:
                 pass

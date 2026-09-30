@@ -82,3 +82,61 @@ class TestChunkMetadata:
         assert "test_1" in s
         assert "child" in s
         assert "256" in s
+
+
+class TestChunkingPipelineOrder:
+    """Test ChunkingPipeline document ordering and table interleaving."""
+
+    def test_interleaved_document_order(self) -> None:
+        from src.chunking.chunker import ChunkingPipeline
+        from src.ingestion.section_splitter import FilingSection
+        from src.ingestion.table_extractor import ExtractedTable
+
+        table = ExtractedTable(
+            table_id="AAPL_10K_2023_table_1",
+            title="Consolidated Table",
+            content="| Col 1 | Col 2 |\n| :--- | :--- |\n| A | B |",
+            format_type="markdown",
+            header_row="Col 1 Col 2",
+            row_count=2,
+            has_complex_structure=False,
+            position_in_doc=100,
+        )
+
+        section_html = """
+        <p>Preamble paragraph before the table.</p>
+        <div data-table-placeholder="AAPL_10K_2023_table_1"></div>
+        <p>Follow-up paragraph after the table.</p>
+        """
+
+        section = FilingSection(
+            section_id="cover_page",
+            section_name="Cover Page",
+            content_type="prose",
+            html_content=section_html,
+            tables=[table],
+        )
+
+        pipeline = ChunkingPipeline()
+        chunks = pipeline.process_filing(
+            sections=[section],
+            filing_meta={
+                "company_ticker": "AAPL",
+                "company_name": "Apple Inc.",
+                "filing_type": "10-K",
+                "fiscal_year": 2023,
+                "filing_date": "2023-11-03",
+            },
+        )
+
+        # Chunks should be ordered: prose before table -> table chunks -> prose after table
+        content_types = [c.metadata.content_type for c in chunks]
+        assert content_types[0] == "prose"
+        assert "Preamble paragraph" in chunks[0].text
+        assert any(c.metadata.content_type == "table" for c in chunks)
+        assert content_types[-1] == "prose"
+        assert "Follow-up paragraph" in chunks[-1].text
+
+        # Verify sequential chunk_index
+        for idx, c in enumerate(chunks):
+            assert c.metadata.chunk_index == idx

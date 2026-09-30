@@ -169,6 +169,10 @@ class HTMLParser:
         # Step 2: Strip XBRL wrapper tags (preserve inner text)
         self._strip_xbrl_tags(soup)
 
+        # Decompose non-content script and style tags
+        for tag in soup.find_all(["script", "style"]):
+            tag.decompose()
+
         # Step 3: Remove non-semantic attributes
         self._strip_non_semantic_attrs(soup)
 
@@ -185,26 +189,29 @@ class HTMLParser:
     def _strip_xbrl_tags(self, soup: BeautifulSoup) -> None:
         """Strip all XBRL wrapper tags while preserving their inner content.
 
-        Handles tags like <ix:nonFraction>, <xbrli:context>, etc.
-        The inner text/children of each tag are preserved in-place.
+        Decomposes non-visual XBRL headers and taxonomy definitions first so
+        schema URLs and context definitions do not leak into text.
+        Then unwraps visible inline XBRL tags (<ix:nonFraction>, etc.)
+        preserving their inner text.
         """
-        # Find all tags with XBRL namespace prefixes
+        # Decompose non-visual XBRL containers and taxonomy definitions first.
+        # These contain schema references, contexts, units, and hidden items
+        # that must NOT be preserved in visible text.
+        for tag in soup.find_all(
+            re.compile(r"^(ix:header|ix:hidden|xbrli:|xbrldi:|link:|xlink:)", re.IGNORECASE)
+        ):
+            tag.decompose()
+
+        # Find all tags with XBRL namespace prefixes (e.g., <ix:nonFraction>, <ix:nonNumeric>)
         xbrl_tags = []
         for tag in soup.find_all(True):
             tag_name = tag.name.lower() if tag.name else ""
             if any(tag_name.startswith(prefix) for prefix in _XBRL_TAG_PREFIXES):
                 xbrl_tags.append(tag)
 
-        # Unwrap each XBRL tag (replaces tag with its children)
+        # Unwrap each visible XBRL tag (replaces tag with its inner text/children)
         for tag in xbrl_tags:
             tag.unwrap()
-
-        # Also remove standalone XBRL elements with no visible content
-        # (e.g., <xbrli:context>, <xbrli:unit> definitions)
-        for tag in soup.find_all(
-            re.compile(r"^(xbrli|xbrldi|link|xlink):", re.IGNORECASE)
-        ):
-            tag.decompose()
 
         # Remove xmlns attributes from root elements
         for tag in soup.find_all(True):

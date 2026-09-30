@@ -93,3 +93,64 @@ class TestProseChunker:
         )
 
         assert len(chunks) == 0
+
+    def test_chunks_div_based_paragraphs_with_header(self) -> None:
+        """Test that prose chunker captures <div> paragraphs even when heading is in <p>."""
+        html = """
+        <p>Item 1A. Risk Factors</p>
+        <div><span>First major risk factor about global macroeconomic conditions affecting consumer spending and demand.</span></div>
+        <div><span>Second major risk factor about supply chain disruptions affecting manufacturing components and logistics.</span></div>
+        """
+        chunks = self.chunker.chunk(
+            section_html=html,
+            section_id="item1a_risk_factors",
+            section_name="Risk Factors",
+            filing_meta=self.filing_meta,
+        )
+
+        assert len(chunks) >= 1
+        all_text = " ".join(c.text for c in chunks)
+        assert "Item 1A. Risk Factors" in all_text
+        assert "macroeconomic conditions" in all_text
+        assert "supply chain disruptions" in all_text
+
+    def test_filters_running_headers(self) -> None:
+        """Test that running headers like 'Apple Inc. | 2023 Form 10-K | 12' are filtered out."""
+        html = """
+        <p>Item 1A. Risk Factors</p>
+        <div>Apple Inc. | 2023 Form 10-K | 12</div>
+        <div>The Company's business could be adversely affected by international trade tensions.</div>
+        """
+        chunks = self.chunker.chunk(
+            section_html=html,
+            section_id="item1a_risk_factors",
+            section_name="Risk Factors",
+            filing_meta=self.filing_meta,
+        )
+
+        assert len(chunks) >= 1
+        all_text = " ".join(c.text for c in chunks)
+        assert "2023 Form 10-K | 12" not in all_text
+        assert "international trade tensions" in all_text
+
+    def test_checkbox_statements_preserved(self) -> None:
+        """Test that checkbox statements and answers (e.g. Yes ☒ No ☐) are preserved."""
+        html = """
+        <p>Indicate by check mark if the Registrant is a well-known seasoned issuer, as defined in Rule 405 of the Securities Act.</p>
+        <div><span>Yes </span><span>&#9746;</span><span> No </span><span>&#9744;</span></div>
+        <p>Indicate by check mark whether the Registrant is a shell company (as defined in Rule 12b-2 of the Act).</p>
+        <div><span>Yes </span><span>&#9744;</span><span> No </span><span>&#9746;</span></div>
+        """
+        chunks = self.chunker.chunk(
+            section_html=html,
+            section_id="cover_page",
+            section_name="Document Header and Cover Page",
+            filing_meta=self.filing_meta,
+        )
+
+        assert len(chunks) >= 1
+        all_text = " ".join(c.text for c in chunks)
+        assert "well-known seasoned issuer" in all_text
+        assert "\u2612" in all_text or "☒" in all_text
+        assert "\u2610" in all_text or "☐" in all_text
+        assert "shell company" in all_text

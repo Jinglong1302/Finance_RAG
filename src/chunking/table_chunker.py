@@ -69,6 +69,12 @@ class TableChunker:
         )
         parent_id = f"{base_id}_parent"
 
+        from src.chunking.metadata import classify_section_type
+
+        section_type = classify_section_type(
+            section_id, section_name, table.title, table.content
+        )
+
         # Base metadata kwargs
         meta_kwargs = {
             "company_ticker": filing_meta["company_ticker"],
@@ -77,6 +83,7 @@ class TableChunker:
             "fiscal_year": filing_meta.get("fiscal_year", 0),
             "filing_date": filing_meta.get("filing_date", ""),
             "section": section_id,
+            "section_type": section_type,
             "section_title": section_name,
             "table_id": table.table_id,
             "table_format": table.format_type,

@@ -6,6 +6,9 @@ and collects all chunks for a single filing.
 
 from __future__ import annotations
 
+import re
+from bs4 import BeautifulSoup
+
 from src.chunking.metadata import Chunk
 from src.chunking.note_chunker import NoteChunker
 from src.chunking.prose_chunker import ProseChunker
@@ -64,6 +67,10 @@ class ChunkingPipeline:
             section_chunks = self._process_section(section, filing_meta)
             all_chunks.extend(section_chunks)
 
+        # Assign global document-order chunk_index
+        for idx, chunk in enumerate(all_chunks):
+            chunk.metadata.chunk_index = idx
+
         # Log summary
         parent_count = sum(
             1 for c in all_chunks if c.metadata.chunk_type == "parent"
@@ -107,6 +114,10 @@ class ChunkingPipeline:
                     filing_meta=filing_meta,
                 )
             )
+
+        elif "data-table-placeholder" in section.html_content and section.tables:
+            # When tables are tagged with placeholders, chunk interleaved flow in true document order
+            chunks.extend(self._chunk_section_flow(section, filing_meta))
 
         elif section.content_type == "financial_statements":
             # Financial statements → tables + inter-table prose
@@ -153,4 +164,97 @@ class ChunkingPipeline:
             )
             chunks.extend(prose_chunks)
 
+        return chunks
+
+    def _chunk_section_flow(
+        self,
+        section: FilingSection,
+        filing_meta: dict,
+    ) -> list[Chunk]:
+        """Chunk a section with interleaved tables and prose in exact document order."""
+        soup = BeautifulSoup(section.html_content, "lxml")
+        for tag in soup.find_all(["script", "style", "ix:header", "ix:hidden"]):
+            tag.decompose()
+
+        table_map = {t.table_id: t for t in section.tables}
+
+        # Extract leaf blocks and table placeholders in document order
+        raw_blocks: list[tuple[str, str]] = []  # ('table', table_id) or ('prose', text)
+        for el in soup.find_all(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6"]):
+            tid = el.get("data-table-placeholder")
+            if tid:
+                raw_blocks.append(("table", str(tid)))
+                continue
+            if el.find(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6"]) or el.select_one(
+                "[data-table-placeholder]"
+            ):
+                continue
+            t = el.get_text(separator=" ", strip=True)
+            t = re.sub(r"\s+", " ", t).strip()
+            if t:
+                raw_blocks.append(("prose", t))
+
+        # Merge short checkbox answers into preceding paragraph
+        processed_blocks: list[tuple[str, str]] = []
+        for btype, bval in raw_blocks:
+            if btype == "table":
+                processed_blocks.append((btype, bval))
+            else:
+                has_cb = any(c in self.prose_chunker.CHECKBOX_CHARS for c in bval)
+                if (
+                    has_cb
+                    and len(bval) <= 30
+                    and processed_blocks
+                    and processed_blocks[-1][0] == "prose"
+                ):
+                    prev_text = processed_blocks[-1][1]
+                    processed_blocks[-1] = ("prose", f"{prev_text}  {bval}")
+                else:
+                    if len(bval) > 10 or has_cb:
+                        if not re.match(
+                            r"^.+?\s*\|\s*\d{4}\s+form\s+10-k\s*\|\s*\d+$",
+                            bval,
+                            re.IGNORECASE,
+                        ):
+                            processed_blocks.append((btype, bval))
+
+        chunks: list[Chunk] = []
+        current_prose: list[str] = []
+        prose_counter = 0
+
+        def flush_prose() -> None:
+            nonlocal prose_counter
+            if not current_prose:
+                return
+            p_chunks = self.prose_chunker.chunk_paragraphs(
+                paragraphs=current_prose,
+                section_id=section.section_id,
+                section_name=section.section_name,
+                filing_meta=filing_meta,
+                start_idx=prose_counter,
+            )
+            # In financial_statements, skip tiny prose fragments (< 30 tokens)
+            if section.content_type == "financial_statements":
+                p_chunks = [c for c in p_chunks if c.metadata.token_count >= 30]
+
+            chunks.extend(p_chunks)
+            prose_counter += len(p_chunks)
+            current_prose.clear()
+
+        for btype, bval in processed_blocks:
+            if btype == "table":
+                flush_prose()
+                t_obj = table_map.get(bval)
+                if t_obj:
+                    t_chunks = self.table_chunker.chunk(
+                        table=t_obj,
+                        section_id=section.section_id,
+                        section_name=section.section_name,
+                        filing_meta=filing_meta,
+                    )
+                    chunks.extend(t_chunks)
+            else:
+                current_prose.append(bval)
+
+        flush_prose()
         return chunks
