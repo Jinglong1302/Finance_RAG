@@ -22,16 +22,38 @@ class TestTableExtractor:
         assert "$394,328" in table.content
         assert "|" in table.content  # Markdown pipe syntax
 
-    def test_complex_table_to_html(self, sample_complex_html_table: str) -> None:
-        """Test HTML fallback for tables with colspan."""
+    def test_complex_table_to_markdown(self, sample_complex_html_table: str) -> None:
+        """Test normalization of tables with colspan into Markdown."""
         full_html = f"<html><body>{sample_complex_html_table}</body></html>"
         tables = self.extractor.extract_tables(full_html, ticker="AAPL", fiscal_year=2024)
 
         assert len(tables) >= 1
         table = tables[0]
         assert table.has_complex_structure is True
-        assert table.format_type == "html_fallback"
+        assert table.format_type == "markdown"
         assert "Cash and cash equivalents" in table.content
+
+    def test_complex_table_fallback_to_html(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test fallback to stripped HTML when markdown normalization fails."""
+        # Force normalize_html_table_to_markdown to return empty string
+        monkeypatch.setattr(
+            "src.ingestion.table_extractor.normalize_html_table_to_markdown",
+            lambda html: "",
+        )
+        html = """
+        <html><body>
+        <table>
+            <tr><th colspan="2">Consolidated Items</th></tr>
+            <tr><td>Item A</td><td>$100</td></tr>
+        </table>
+        </body></html>
+        """
+        tables = self.extractor.extract_tables(html, ticker="AAPL", fiscal_year=2024)
+        assert len(tables) == 1
+        table = tables[0]
+        assert table.has_complex_structure is True
+        assert table.format_type == "html_fallback"
+        assert "Item A" in table.content
 
     def test_header_extraction(self, sample_html_table: str) -> None:
         """Test header row extraction for child chunk injection."""

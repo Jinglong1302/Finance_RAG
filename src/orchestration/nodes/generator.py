@@ -68,6 +68,7 @@ def generator_node(state: CRAGState) -> dict[str, Any]:
                 },
             ],
             temperature=0,
+            seed=42,
         )
 
         answer = response.choices[0].message.content or ""

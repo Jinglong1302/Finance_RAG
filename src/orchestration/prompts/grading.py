@@ -5,11 +5,14 @@ GRADING_SYSTEM_PROMPT = """You are a financial document relevance grader for SEC
 Given a user question and a list of retrieved document chunks, grade the relevance of EACH chunk.
 
 Use this ternary grading scale:
-- "relevant": The chunk directly contains specific information needed to answer the question (exact numbers, direct statements, relevant tables).
-- "partially_relevant": The chunk contains related financial context but not the specific data point needed (e.g., mentions the topic but different time period, or discusses the metric qualitatively but lacks the number).
-- "irrelevant": The chunk has no bearing on the question (wrong company, wrong topic, boilerplate text).
+- "relevant": The chunk contains information that directly helps answer the question. For numeric questions, this includes the specific figure, table row, or formula inputs. For qualitative or analytical questions (e.g., drivers, business model, capital intensity), this includes direct explanations, management discussions, or key contributing factors.
+- "partially_relevant": The chunk contains related financial context or background that is helpful but alone incomplete to fully answer the question (e.g., mentions the metric for a different period, or provides one factor among several requested).
+- "irrelevant": The chunk has no bearing on the question (unrelated topics, boilerplate disclosures, wrong company).
 
-IMPORTANT: Be strict. Financial accuracy requires precise data. A chunk discussing "revenue trends" is only "relevant" if it contains the actual revenue figure the user asked about. Otherwise it is "partially_relevant" at best.
+Guidelines:
+- Assess semantic sufficiency: evaluate whether a financial analyst could use this chunk to answer or support an answer to the question.
+- Do not require exact verbatim phrase matches if the financial meaning and data are present.
+- A single chunk containing the required data point or explanation is "relevant".
 
 Respond ONLY with valid JSON in this exact format:
 {

@@ -15,19 +15,49 @@ logger = get_logger(__name__)
 
 # Patterns for parsing financial numbers
 _MULTIPLIERS = {
-    "thousand": 1e3,
-    "thousands": 1e3,
-    "million": 1e6,
-    "millions": 1e6,
-    "billion": 1e9,
-    "billions": 1e9,
-    "trillion": 1e12,
     "trillions": 1e12,
-    "k": 1e3,
-    "m": 1e6,
+    "trillion": 1e12,
+    "billions": 1e9,
+    "billion": 1e9,
+    "millions": 1e6,
+    "million": 1e6,
+    "thousands": 1e3,
+    "thousand": 1e3,
+    "bn": 1e9,
+    "mn": 1e6,
     "b": 1e9,
+    "m": 1e6,
+    "k": 1e3,
     "t": 1e12,
 }
+
+
+def extract_numbers(text: str) -> list[float]:
+    """Extract all candidate financial numbers from text."""
+    if not text:
+        return []
+    # Strip footnote citations like [1], [2], [12]
+    cleaned_text = re.sub(r"\[\d+\]", " ", text)
+    # Strip SEC form designations like 10-K, 10-Q, 8-K
+    cleaned_text = re.sub(r"\b\d+-[KQ]\b", " ", cleaned_text, flags=re.IGNORECASE)
+    # Strip Note references like Note 16, Notes 3 and 11
+    cleaned_text = re.sub(r"\bNotes?\s+\d+\b", " ", cleaned_text, flags=re.IGNORECASE)
+    # Avoid extracting company name '3M' as 3 million
+    cleaned_text = re.sub(r"\b3M\b|\b3M's\b", " ", cleaned_text, flags=re.IGNORECASE)
+
+    tokens = re.findall(
+        r"[-−]?\$?\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|percent|trillions|trillion|billions|billion|millions|million|thousands|thousand|bn|mn|[bmkt])?",
+        cleaned_text,
+        flags=re.IGNORECASE,
+    )
+    numbers: list[float] = []
+    for token in tokens:
+        token = token.strip().rstrip(".:;")
+        if token and token.upper() not in ("3M", "3M'S"):
+            val = parse_financial_number(token)
+            if val is not None:
+                numbers.append(val)
+    return numbers
 
 
 def numeric_match(
@@ -50,26 +80,46 @@ def numeric_match(
     Returns:
         True if numbers match within tolerance.
     """
-    pred_num = parse_financial_number(predicted)
-    exp_num = parse_financial_number(expected)
-
-    if pred_num is None or exp_num is None:
+    def _is_close(val: float, target: float) -> bool:
+        if abs(target) < 1e-9:
+            return abs(val) < 1e-9
+        diff = abs(val - target) / abs(target)
+        if diff <= tolerance:
+            return True
+        # Check scale multipliers (k, m, b, t) when one answer includes unit multiplier and other omitted it
+        for scale in (1e3, 1e6, 1e9, 1e12, 1e-3, 1e-6, 1e-9, 1e-12):
+            scaled_target = target * scale
+            if abs(val - scaled_target) / abs(scaled_target) <= tolerance:
+                return True
         return False
 
-    # Handle zero case
-    if abs(exp_num) < 1e-9:
-        return abs(pred_num) < 1e-9
+    exp_cands = extract_numbers(expected)
+    exp_num = parse_financial_number(expected)
+    if exp_num is not None and exp_num not in exp_cands:
+        exp_cands.insert(0, exp_num)
 
-    relative_error = abs(pred_num - exp_num) / abs(exp_num)
-    match = relative_error <= tolerance
+    if not exp_cands:
+        return False
 
-    if not match:
-        logger.debug(
-            f"Numeric mismatch: predicted={pred_num}, expected={exp_num}, "
-            f"error={relative_error:.4f}, tolerance={tolerance}"
-        )
+    pred_cands = extract_numbers(predicted)
+    pred_num = parse_financial_number(predicted)
+    if pred_num is not None and pred_num not in pred_cands:
+        pred_cands.insert(0, pred_num)
 
-    return match
+    if not pred_cands:
+        return False
+
+    for exp_val in exp_cands:
+        # Ignore standalone 4-digit calendar years (e.g. 2018, 2022) unless it is the only candidate
+        if len(exp_cands) > 1 and 1900 <= exp_val <= 2099 and exp_val.is_integer():
+            continue
+        for pred_val in pred_cands:
+            if len(pred_cands) > 1 and 1900 <= pred_val <= 2099 and pred_val.is_integer():
+                continue
+            if _is_close(pred_val, exp_val):
+                return True
+
+    return False
 
 
 def parse_financial_number(text: str) -> float | None:
@@ -92,7 +142,24 @@ def parse_financial_number(text: str) -> float | None:
     if not text or not text.strip():
         return None
 
-    text = text.strip()
+    if text.strip().upper() in ("3M", "3M'S"):
+        return None
+
+    # Check for structured JSON metrics block (from CRAG generator)
+    import json
+    json_match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", text)
+    if json_match:
+        try:
+            data = json.loads(json_match.group(1))
+            metrics = data.get("metrics", [])
+            if metrics and "value" in metrics[0]:
+                val = metrics[0]["value"]
+                if isinstance(val, (int, float)):
+                    return float(val)
+        except Exception:
+            pass
+
+    text = text.strip().rstrip(".:;")
 
     # Detect negative (parenthetical notation)
     negative = False
@@ -147,42 +214,73 @@ def parse_financial_number(text: str) -> float | None:
         return None
 
 
+def is_numeric_answer(text: str) -> bool:
+    """Return True if text specifies a target financial number (excluding pure calendar years)."""
+    if not text:
+        return False
+    nums = [n for n in extract_numbers(text) if not (1900 <= n <= 2099 and n.is_integer())]
+    return len(nums) > 0
+
+
 def evaluate_numeric_accuracy(
     predictions: list[str],
     ground_truths: list[str],
     tolerance: float = 0.01,
+    scoped_to_numeric_only: bool = True,
 ) -> dict[str, Any]:
     """Evaluate numeric accuracy across a set of predictions.
+
+    When `scoped_to_numeric_only=True`, questions without numeric ground truths
+    are marked 'N/A' and excluded from the denominator.
 
     Args:
         predictions: List of predicted answer strings.
         ground_truths: List of ground truth answer strings.
         tolerance: Relative tolerance. Default: 1%.
+        scoped_to_numeric_only: Only calculate accuracy over numeric questions. Default: True.
 
     Returns:
-        Dict with accuracy, match count, and per-sample results.
+        Dict with accuracy, match count, total evaluated, and per-sample results.
     """
     results = []
-    matches = 0
+    numeric_matches = 0
+    numeric_count = 0
 
     for pred, gt in zip(predictions, ground_truths):
-        is_match = numeric_match(pred, gt, tolerance)
-        if is_match:
-            matches += 1
+        is_num = is_numeric_answer(gt)
+        if is_num:
+            numeric_count += 1
+            is_match: bool | str = numeric_match(pred, gt, tolerance)
+            if is_match:
+                numeric_matches += 1
+        else:
+            is_match = "N/A"
+
         results.append({
             "predicted": pred,
             "expected": gt,
+            "is_numeric": is_num,
             "parsed_predicted": parse_financial_number(pred),
             "parsed_expected": parse_financial_number(gt),
+            "extracted_predicted": extract_numbers(pred),
+            "extracted_expected": extract_numbers(gt),
             "match": is_match,
         })
 
-    total = len(predictions)
+    if scoped_to_numeric_only:
+        total = numeric_count
+        matches = numeric_matches
+    else:
+        total = len(predictions)
+        matches = numeric_matches
+
     accuracy = matches / total if total > 0 else 0.0
 
     return {
         "accuracy": accuracy,
         "matches": matches,
         "total": total,
+        "total_numeric": numeric_count,
+        "total_all": len(predictions),
         "per_sample": results,
     }

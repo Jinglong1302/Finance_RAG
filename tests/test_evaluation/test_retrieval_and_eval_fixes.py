@@ -104,3 +104,78 @@ class TestContextFormattingForRagas:
         assert "Total net sales: $391,035 million" in formatted[0]
         assert "[Expanded Context]" in formatted[0]
         assert "Consolidated Statements of Operations" in formatted[0]
+
+
+class TestSemanticSpanMatch:
+    """Tests for span_match, normalize_span, and span_match_rate."""
+
+    def test_tatqa_q1_article_normalization(self):
+        from src.evaluation.metrics import span_match
+        gt = "before provision for income taxes"
+        pred = "before the provision for income taxes"
+        assert span_match(pred, gt)
+
+    def test_span_within_full_sentence(self):
+        from src.evaluation.metrics import span_match
+        gt = "before provision for income taxes"
+        pred = "Based on the table, the line item was before the provision for income taxes."
+        assert span_match(pred, gt)
+
+    def test_numeric_span_match(self):
+        from src.evaluation.metrics import span_match
+        assert span_match("$1,577 million", "$1577.00")
+        assert span_match("operating margin fell by 1.7%", "1.7%")
+
+
+class Test4WayClassification:
+    """Tests for classify_qa_result."""
+
+    def test_answered_correct(self):
+        from src.evaluation.metrics import classify_qa_result
+        res = classify_qa_result(
+            answer="Capital expenditures were $1,577 million in FY2018.",
+            ground_truth="$1577.00",
+            is_indexed=True,
+            is_refusal=False,
+        )
+        assert res == "answered-correct"
+
+    def test_answered_incorrect(self):
+        from src.evaluation.metrics import classify_qa_result
+        res = classify_qa_result(
+            answer="Capital expenditures were $9,999 million.",
+            ground_truth="$1577.00",
+            is_indexed=True,
+            is_refusal=False,
+        )
+        assert res == "answered-incorrect"
+
+    def test_abstained_correctly_real_gap(self):
+        from src.evaluation.metrics import classify_qa_result
+        res = classify_qa_result(
+            answer="[ABSTAIN] Not indexed in available SEC filings.",
+            ground_truth="N/A",
+            is_indexed=False,
+            is_refusal=True,
+        )
+        assert res == "abstained-correctly-real-gap"
+
+    def test_abstained_incorrectly_indexed_gap(self):
+        from src.evaluation.metrics import classify_qa_result
+        res = classify_qa_result(
+            answer="[ABSTAIN] Could not find evidence.",
+            ground_truth="$1577.00",
+            is_indexed=True,
+            is_refusal=True,
+        )
+        assert res == "abstained-incorrectly"
+
+    def test_excluded_fiscal_year_not_indexed(self):
+        from src.evaluation.metrics import classify_qa_result
+        res = classify_qa_result(
+            answer="I think the value was $100.",
+            ground_truth="$100",
+            is_indexed=False,
+            is_refusal=False,
+        )
+        assert res == "excluded: fiscal year not indexed"

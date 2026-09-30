@@ -13,6 +13,7 @@ from src.orchestration.prompts.rewriting import (
     REWRITING_USER_PROMPT,
 )
 from src.orchestration.state import CRAGState
+from src.retrieval.query_expansion import expand_financial_query
 from src.utils.logging import get_logger
 from src.utils.tokens import estimate_cost
 
@@ -55,11 +56,13 @@ def query_rewriter_node(state: CRAGState) -> dict[str, Any]:
                     ),
                 },
             ],
-            temperature=0.3,  # Slight creativity for alternative phrasing
+            temperature=0,
+            seed=42,
         )
 
         rewritten = response.choices[0].message.content or query
         rewritten = rewritten.strip().strip('"').strip("'")
+        rewritten = expand_financial_query(rewritten)
 
         # Track cost
         usage = response.usage
@@ -74,8 +77,11 @@ def query_rewriter_node(state: CRAGState) -> dict[str, Any]:
         new_cycle = cycle_count + 1
 
         if new_cycle >= 2:
-            # Relax filters: remove fiscal_year and section constraints
-            new_filters.pop("fiscal_year", None)
+            # Relax filters: remove section constraints, but preserve fiscal_year if explicitly stated in query
+            import re
+            has_explicit_year = bool(re.search(r"\b(19\d\d|20\d\d)\b", state.get("original_query", "")))
+            if not has_explicit_year:
+                new_filters.pop("fiscal_year", None)
             new_filters.pop("section", None)
             logger.info(
                 f"Cycle {new_cycle}: Relaxing filters to {new_filters}"

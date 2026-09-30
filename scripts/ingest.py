@@ -129,8 +129,9 @@ def main() -> None:
                 fiscal_year=cleaned.fiscal_year,
             )
 
-            # Split into sections
-            sections = section_splitter.split(cleaned.clean_html, tables)
+            # Split into sections (using annotated HTML containing table placeholders)
+            annotated_html = table_extractor.annotated_html or cleaned.clean_html
+            sections = section_splitter.split(annotated_html, tables)
 
             # Build filing metadata
             filing_meta = {

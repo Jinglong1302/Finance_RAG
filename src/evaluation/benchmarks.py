@@ -24,6 +24,8 @@ class EvalSample:
     source: str = ""  # "financebench" or "tatqa"
     category: str = ""  # e.g., "factual", "arithmetic", "comparative"
     difficulty: str = ""  # e.g., "easy", "medium", "hard"
+    doc_period: str | int | None = None
+    doc_name: str | None = None
 
 
 def load_financebench(split: str = "all") -> list[EvalSample]:

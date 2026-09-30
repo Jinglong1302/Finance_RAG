@@ -19,13 +19,13 @@ logger = get_logger(__name__)
 
 
 def make_reranker_node(
-    reranker: CrossEncoderReranker,
+    reranker: CrossEncoderReranker | None,
     expander: ParentExpander,
 ):
     """Factory to create a reranker node with injected dependencies.
 
     Args:
-        reranker: CrossEncoderReranker instance.
+        reranker: CrossEncoderReranker instance, or None to skip reranking.
         expander: ParentExpander instance.
 
     Returns:
@@ -65,8 +65,23 @@ def make_reranker_node(
         top_k = state.get("result_count", 5)
         query = state.get("rewritten_query") or state.get("original_query", "")
 
-        # Rerank
-        reranked = reranker.rerank(query, candidates, top_k=top_k)
+        # Rerank if model provided, otherwise preserve hybrid rank order
+        if reranker is not None:
+            all_reranked = reranker.rerank(query, candidates, top_k=len(candidates))
+            # Table-aware diversity selection: ensure top financial table/statement chunk
+            # is not crowded out by repetitive prose chunks
+            tables = [
+                c for c in all_reranked
+                if ("table" in c.chunk_id or (c.metadata and c.metadata.get("chunk_type") == "table") or "\n|" in c.text)
+            ]
+            top_selection = all_reranked[:top_k]
+            if tables and any(c.score > -3.0 for c in tables):
+                top_table = tables[0]
+                if top_table not in top_selection:
+                    top_selection = top_selection[:top_k - 1] + [top_table]
+            reranked = top_selection
+        else:
+            reranked = candidates[:top_k]
 
         # Convert to dicts for state
         reranked_dicts = [
