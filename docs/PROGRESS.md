@@ -165,8 +165,9 @@ Expected effect: +1 to +2 more answered questions on dev-5+holdout, pushing
 FinanceBench27 coverage from 62.96% to ≥63.0%.
 Risk: may gain incorrect answers on borderline questions.
 
-**Files**: `results/eval/part_b_tier1_20260930_170002.json`,
-`results/eval/part_b_tier2_20260930_170337.json`
+**Files**: `results/archive/part_b_tier1_20260930_170002.json`,
+`results/archive/part_b_tier2_20260930_170337.json`
+_(archived — Cycle 2 reverted; superseded by Cycle 1 shipped files)_
 
 ### Tier 1 results (Q01-Q16)
 | correct | incorrect | abstained | coverage | prec@ans |

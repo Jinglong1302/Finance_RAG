@@ -55,3 +55,8 @@ reports/
 scratch/
 
 *.snapshot
+
+# Dataset files (license-restricted)
+# financebench_in_corpus.jsonl is CC BY-NC 4.0 (non-commercial only) — must not be redistributed
+# Download from: https://huggingface.co/datasets/PatronusAI/financebench
+data/eval/financebench_in_corpus.jsonl
