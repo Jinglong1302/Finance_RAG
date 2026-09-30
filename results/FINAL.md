@@ -169,14 +169,16 @@ Git: b5f9c2e | Cost: $0.9228 | Cache: 123H/17M
 
 ## Phase C: Ragas Evaluation (v1.0 final config)
 
-Judge model: gpt-4o (ragas 0.2.15). Baseline = per-chunk-grader config (SHA 94fdd2f).
+Judge model: gpt-4o (ragas 0.2.15, SHA 8893b0a).
+Baseline = per-chunk-grader config (SHA 94fdd2f), same judge model.
+Answered subsets only (abstentions excluded).
 
-| Metric | Baseline (94fdd2f) | FB27 no-inj (n=16) | AAPL50 (n=42) |
-|--------|-------------------|--------------------|---------------|
+| Metric | Baseline 94fdd2f | FB27 no-inj n=16 | AAPL50 n=42 |
+|--------|-----------------|-----------------|------------|
 | faithfulness | 0.834 | 0.797 | **0.900** |
-| context_precision | 0.892 | 0.746 | 0.758 |
-| answer_relevancy | 0.856 | **0.880** | **0.987** |
-| context_recall | 0.324 | **0.344** | **0.956** |
+| context_precision | **0.856** | 0.746 | 0.758 |
+| answer_relevancy | **0.892** | 0.880 | **0.987** |
+| context_recall | 0.324 | 0.344 | **0.956** |
 
 Notes:
 - Ragas calls bypass the pipeline disk cache (separate LangChain client). Real API spend.

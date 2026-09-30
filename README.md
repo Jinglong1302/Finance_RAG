@@ -154,18 +154,18 @@ The previously reported FB27 Part B numbers (SHA b630a6b) used ticker injection 
 
 Ticker resolution: 27/27 correct on production path. The coverage drop (−3.7pp) is entirely from one question (Q26 PFE) that the hallucination guard now correctly rejects instead of returning a wrong answer.
 
-### Ragas Metrics (v1.0 final config)
+### Ragas Metrics (v1.0 final config, SHA 8893b0a)
 
-Judge model: gpt-4o (ragas 0.2.15). Evaluated on answered subsets only.
+Judge model: gpt-4o (ragas 0.2.15). Answered subsets only (abstentions excluded).
 
-| Metric | Baseline† | FB27 no-inj (n=16) | AAPL50 (n=42) |
-|--------|----------|--------------------|---------------|
+| Metric | Baseline† (94fdd2f) | FB27 no-inj (n=16) | AAPL50 (n=42) |
+|--------|--------------------|--------------------|---------------|
 | faithfulness | 0.834 | 0.797 | **0.900** |
-| context_precision | 0.892 | 0.746 | 0.758 |
-| answer_relevancy | 0.856 | 0.880 | **0.987** |
+| context_precision | **0.856** | 0.746 | 0.758 |
+| answer_relevancy | **0.892** | 0.880 | **0.987** |
 | context_recall | 0.324 | 0.344 | **0.956** |
 
-† Baseline = per-chunk-grader config (SHA 94fdd2f), measured on the same answered subsets.
+† Baseline = per-chunk-grader config (SHA 94fdd2f), same judge model.
 
 ### Key Limitations
 
