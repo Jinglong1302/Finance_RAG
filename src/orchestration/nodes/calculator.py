@@ -1,3 +1,4 @@
+# NOTE: This module is not currently imported by any pipeline node. It is kept as a utility.
 """Python REPL calculator tool for numerical reasoning.
 
 Provides sandboxed execution of Python expressions for financial

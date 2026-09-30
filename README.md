@@ -80,7 +80,7 @@ python scripts/eval/eval_part_b_aapl50.py
 python scripts/eval/eval_fullscale_baselines.py
 ```
 
-Results are saved to `results/eval/` (gitignored except `results/PROGRESS.md` and `results/FINAL.md`).
+Results are saved to `results/eval/` (gitignored except `results/FINAL.md`; progress log at `docs/PROGRESS.md`).
 LLM cache stored in `results/llm_cache/` (gitignored). Estimated costs: see `results/FINAL.md`.
 
 ## Architecture
@@ -122,9 +122,12 @@ Methodology: LLM disk cache (temp=0, seed=42).
 |--------|---|----------|---------|----------|----------|
 | Baseline (per-chunk grader, SHA 94fdd2f) | 27 | 17 | 13 | 62.96% | 76.5% |
 | Part B (pooled sufficiency, SHA b630a6b) | 27 | 17 | 15 | 62.96% | **88.2%** |
+| **Production / no-injection (b5f9c2e)** | **27** | **16** | **15** | **59.3% (16/27)** | **93.8%** |
 
-**Coverage gate (>63%) not met** — 17/27 = 62.96% for both configs.
-**Precision improved +11.7pp** (13→15 correct on the same 17 answered questions).
+The production path row (no ticker injection) is the canonical v1.0 result. Coverage drops −3.7pp vs the injected run because Q26 PFE is now correctly rejected by the hallucination guard; correct count is unchanged (15).
+
+**Coverage gate (>63%) not met** — production path coverage is 59.3% (16/27).
+**Precision improved to 93.8%** on the production path (15/16 answered correctly).
 
 > Caveat: FB27 numbers are measured on two different harnesses (baseline via LangGraph graph without ticker injection; Part B via manual loop with ticker injection) and should not be compared directly. Holdout-22 numbers (Q06-Q27) are tuning-contaminated for Part B — the grader configuration was selected based on these metrics.
 
@@ -175,6 +178,21 @@ Judge model: gpt-4o (ragas 0.2.15). Answered subsets only (abstentions excluded)
 - **Eval metric narrowness**: `span_match` + `numeric_match` may miss correct paraphrases.
 - **n=50 max**: All clean benchmarks cover ≤7 companies (AAPL, MMM, BA, KO, NFLX, PFE, OOC companies). Sector generalization is untested.
 
+## Data
+
+### FinanceBench (CC BY-NC 4.0 — must download separately)
+
+The 27-question FinanceBench in-corpus subset (`data/eval/financebench_in_corpus.jsonl`) is **not
+committed** to this repository because its license (CC BY-NC 4.0) prohibits commercial redistribution.
+
+Download from: https://huggingface.co/datasets/PatronusAI/financebench
+
+After downloading, filter to the 27 questions whose referenced filings are in the Qdrant index
+(MMM, BA, KO, NFLX, PFE, AAPL 10-K) and place the result at `data/eval/financebench_in_corpus.jsonl`.
+
+Other evaluation datasets are committed and have permissive licenses — see `data/README.md` for
+a full table.
+
 ## Project Structure
 
 ```
@@ -190,6 +208,10 @@ Judge model: gpt-4o (ragas 0.2.15). Answered subsets only (abstentions excluded)
 ├── notebooks/       # Exploration and analysis
 └── tests/           # Unit and integration tests
 ```
+
+**Note on unused utilities**: `src/orchestration/nodes/calculator.py` is a sandboxed Python REPL
+utility for financial calculations (CAGR, margins, growth rates). It is not currently imported by
+any pipeline node and is kept for future use.
 
 ## License
 
