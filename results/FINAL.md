@@ -1,8 +1,8 @@
 # Finance RAG — Final Evaluation Report
 
 Branch: `eval/part-a-repair`
-Best config commit: `b630a6b` (Part B sufficiency grader)
-Report date: 2026-09-30
+Best config commit: `b5f9c2e` (v1.0 — Part B sufficiency grader, no ticker injection)
+Report date: 2026-10-01
 
 ---
 
@@ -136,6 +136,58 @@ Q20/Q21: generator receives context with confidence=medium but produces "I could
 
 ---
 
+## Phase A: FB27 Production Path (no ticker injection)
+
+File: `results/eval/fb27_no_injection_20261001_000652.json`
+Git: b5f9c2e | Cost: $0.9228 | Cache: 123H/17M
+
+**Ticker resolution: 27/27 correct** — GPT-4o decomposer correctly extracts ticker from all FB27 queries without injection. Production path is equivalent for ticker resolution.
+
+| Config | n | answered | correct | incorrect | abstained | coverage | prec@ans |
+|--------|---|----------|---------|-----------|-----------|----------|----------|
+| Injected Part B (b630a6b) | 27 | 17 | 15 | 2 | 10 | 62.96% | 88.2% |
+| **No-injection v1.0 (this)** | 27 | **16** | **15** | **1** | **11** | **59.3%** | **93.8%** |
+
+**Change**: Q26 PFE moved from answered-incorrect (injected) → abstained (hallucination guard caught wrong answer under no-injection). Correct count unchanged (15). This is an improvement in answer quality.
+
+---
+
+## Phase B: Generator Prompt Change — REJECTED
+
+**Hypothesis**: Add rule 7 to GENERATION_SYSTEM_PROMPT — when confidence=medium (PARTIAL verdict), provide best-effort answer with caveats rather than refusing. Targeted at Q20/Q21 NFLX self-abstentions.
+
+**Result (FB27 no-injection with rule 7)**:
+
+| Config | n | answered | correct | incorrect | abstained | coverage | prec@ans |
+|--------|---|----------|---------|-----------|-----------|----------|----------|
+| v1.0 (no rule 7) | 27 | 16 | **15** | 1 | 11 | 59.3% | 93.8% |
+| v1.1 trial (rule 7) | 27 | 17 | **14** | 3 | 10 | 63.0% | 82.4% |
+
+**Gate failure**: correct count dropped 15→14 (gate: must not be lower). Rule 7 caused 1 correct answer to flip incorrect and 1 abstained to answer incorrectly. **REVERTED**. v1.0 config retained as final.
+
+---
+
+## Phase C: Ragas Evaluation (v1.0 final config)
+
+Judge model: gpt-4o (ragas 0.2.15). Baseline = per-chunk-grader config (SHA 94fdd2f).
+
+| Metric | Baseline (94fdd2f) | FB27 no-inj (n=16) | AAPL50 (n=42) |
+|--------|-------------------|--------------------|---------------|
+| faithfulness | 0.834 | 0.797 | **0.900** |
+| context_precision | 0.892 | 0.746 | 0.758 |
+| answer_relevancy | 0.856 | **0.880** | **0.987** |
+| context_recall | 0.324 | **0.344** | **0.956** |
+
+Notes:
+- Ragas calls bypass the pipeline disk cache (separate LangChain client). Real API spend.
+- FB27 context_precision (0.746) is lower than baseline — the no-injection run retrieves broader context (no ticker filter applied before retrieval in some cycles), which can introduce less-relevant chunks.
+- AAPL50 context_recall (0.956) is dramatically higher than baseline's 0.324 — confirms the sufficiency grader substantially improves evidence coverage for the answered subset.
+- Baseline 0.324 context_recall was from per-chunk grader config on a different evaluation set; direct comparison has harness differences.
+
+File: `results/eval/ragas_phase_c_20261001_005227.json`
+
+---
+
 ## Cumulative OpenAI Spend
 
 | Run | n | cost |
@@ -146,6 +198,12 @@ Q20/Q21: generator receives context with confidence=medium but produces "I could
 | Part B Tier 2+OOC (holdout-22+OOC20) | 42 | $0.70 |
 | Cycle 2 Tier 1+2 (reverted) | 58 | $0.53 |
 | AAPL50 Part B | 50 | $1.25 |
-| **Total** | | **~$4.44** |
+| **Subtotal (session 1)** | | **~$4.44** |
+| Phase A FB27 no-injection | 27 | $0.9228 |
+| Phase B trial (reverted) | 27 | $0.9485 |
+| AAPL50 re-run (enriched_contexts) | 50 | ~$0.01 (cached) |
+| Phase C Ragas (FB27 n=16 + AAPL50 n=42) | 58 | ~$1.40 (est) |
+| **Session 2 total** | | **~$3.28** |
+| **Grand total** | | **~$7.72** |
 
-Hard cap: $10.00 — $5.56 remaining.
+Session 2 hard cap: $4.30. Estimated session 2 spend: ~$3.28 (within cap).

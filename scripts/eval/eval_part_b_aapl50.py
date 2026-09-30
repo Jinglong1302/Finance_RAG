@@ -187,6 +187,7 @@ def main() -> None:
             "crag_action": state.get("crag_action", ""),
             "cycle_count": state.get("cycle_count", 0),
             "cost_accumulated": state.get("cost_accumulated", 0.0),
+            "enriched_contexts": state.get("enriched_contexts", []),
         })
 
         status = "c" if is_correct else ("A" if refused else "i")
