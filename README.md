@@ -5,12 +5,13 @@ Enterprise-grade financial intelligence engine for querying SEC 10-K/10-Q filing
 ## Features
 
 - **HTML-first SEC Filing Parsing** — Directly parses iXBRL/HTML from EDGAR with table-aware extraction
-- **Hybrid Search** — BGE-M3 dense + sparse embeddings with Reciprocal Rank Fusion (RRF)
-- **Cross-Encoder Reranking** — BGE-reranker-large for precision refinement
-- **Corrective RAG (CRAG)** — Self-correcting retrieval with LangGraph state machine
-- **Zero-Hallucination Design** — Ternary relevance grading, faithfulness guardrails, and explicit refusal
-- **Financial Table Intelligence** — Parent-child chunk hierarchy with header injection
-- **Automated Evaluation** — Ragas metrics (Faithfulness, Context Precision) against FinanceBench & TAT-QA
+- **Hybrid Search** — BGE-M3 dense + sparse (lexical-weight) embeddings with RRF fusion
+- **Cross-Encoder Reranking** — BAAI/bge-reranker-base (overridable via `RERANKER_MODEL` env var)
+- **Corrective RAG (CRAG)** — LangGraph state machine with ≤2 rewrite cycles and explicit refusal
+- **Pooled-Context Sufficiency Grading** — Single GPT-4o call on concatenated top-k context (Part B)
+- **Parent-Child Chunk Hierarchy** — Retrieval on child chunks; parent text injected for context
+- **Hallucination Guard** — Post-generation GPT-4o faithfulness check; triggers rewrite on fail
+- **Citation Mapping** — Structured citation objects with company/section/year metadata per answer
 
 ## Quick Start
 
@@ -57,24 +58,96 @@ Open [http://localhost:8000](http://localhost:8000) to inspect every CRAG step, 
 poetry run python scripts/query.py "What was Apple's total revenue in FY2024?"
 ```
 
-### Evaluate
+### Reproduce Evaluations
+
+All eval scripts require Qdrant running and `OPENAI_API_KEY` set. Enable LLM disk cache to avoid re-spending on reruns (temp=0, seed=42 — deterministic).
 
 ```bash
-poetry run python scripts/evaluate.py --dataset financebench --split dev
+# Part A ablations (retrieval + generation baselines, no grader)
+python scripts/eval/eval_part_a_consolidated.py
+
+# Full-CRAG holdout-22 baseline (per-chunk grader)
+python scripts/eval/eval_crag_holdout22.py
+
+# Part B: pooled sufficiency grader on FB27 (Tier 1 + Tier 2 + OOC20)
+python scripts/eval/eval_part_b.py --tier 1
+python scripts/eval/eval_part_b.py --tier 2   # also runs OOC20
+
+# AAPL50 with Part B grader (clean held-out)
+python scripts/eval/eval_part_b_aapl50.py
+
+# Full-scale baselines (AAPL50 + TAT-QA50 + OOC20 + FB27) on production graph
+python scripts/eval/eval_fullscale_baselines.py
 ```
+
+Results are saved to `results/eval/` (gitignored except `results/PROGRESS.md` and `results/FINAL.md`).
+LLM cache stored in `results/llm_cache/` (gitignored). Estimated costs: see `results/FINAL.md`.
 
 ## Architecture
 
 ```
 User Query → Query Decomposition (GPT-4o)
-           → Hybrid Search (Qdrant Dense + Sparse via RRF)
-           → Cross-Encoder Reranking (BGE-reranker-large)
-           → CRAG Relevance Grading (GPT-4o)
-           → [Context Sufficient] → Generation with Citations
-           → [Insufficient] → Query Rewrite → Re-retrieve (max 2 cycles)
-           → Hallucination Guardrail Check
-           → Final Answer + Document Citations
+           → Hybrid Search (Qdrant: BGE-M3 dense + sparse, RRF)
+           → Cross-Encoder Reranking (bge-reranker-base, top-5)
+           → Parent Expansion (child retrieval → parent context injection)
+           → Pooled Sufficiency Grading (GPT-4o, 1 call on concatenated top-k)
+           → [SUFFICIENT/PARTIAL] → Generation with Citations (GPT-4o)
+                                  → Hallucination Guard (GPT-4o)
+           → [INSUFFICIENT, cycles < 2] → Query Rewrite → Re-retrieve
+           → [INSUFFICIENT, cycles = 2] → Explicit Refusal
 ```
+
+**Current index**: MMM, BA, KO, NFLX, PFE, AAPL — 10-K filings — 6,971 Qdrant points
+
+## Evaluation Results
+
+Evaluated on commit `b630a6b` (Part B pooled-context sufficiency grader).
+Methodology: manual CRAG loop with company-ticker injection, LLM disk cache (temp=0, seed=42).
+
+### Held-Out Benchmarks (clean, grader never saw these)
+
+| Benchmark | n | Coverage | Prec@Ans | Gate | Result |
+|-----------|---|----------|----------|------|--------|
+| AAPL50 (custom 10-K QA) | 50 | 84.0% (42/50) | 95.2% (40/42) | cov ≥84%, prec ≥90% | ✅ both pass |
+| TAT-QA50 (context-injected)* | 50 | 98.0% (49/50) | 93.9% (46/49) | — | — |
+| OOC20 abstention (out-of-corpus) | 20 | — | — | =100% | ✅ 20/20 abstained |
+
+\* TAT-QA50 injects context directly to the generator; grader is not called.
+
+### FinanceBench-27 (FB27 = dev-5 + holdout-22)
+
+| Config | n | answered | correct | coverage | prec@ans |
+|--------|---|----------|---------|----------|----------|
+| Baseline (per-chunk grader, SHA 94fdd2f) | 27 | 17 | 13 | 62.96% | 76.5% |
+| Part B (pooled sufficiency, SHA b630a6b) | 27 | 17 | 15 | 62.96% | **88.2%** |
+
+**Coverage gate (>63%) not met** — 17/27 = 62.96% for both configs.
+**Precision improved +11.7pp** (13→15 correct on the same 17 answered questions).
+
+> Caveat: FB27 numbers are measured on two different harnesses (baseline via LangGraph graph without ticker injection; Part B via manual loop with ticker injection) and should not be compared directly. Holdout-22 numbers (Q06-Q27) are tuning-contaminated for Part B — the grader configuration was selected based on these metrics.
+
+### Baseline vs Part B on Holdout-22 (same harness, contaminated)
+
+| Config | n | answered | correct | coverage | prec@ans |
+|--------|---|----------|---------|----------|----------|
+| Full-CRAG baseline (grader_node) | 22 | 12 | 10 | 54.5% | 83.3% |
+| Part B (sufficiency_grader_node) | 22 | 14 | 13 | **63.6%** | **92.9%** |
+
+These numbers are contaminated (used for config selection). Treat as directional, not held-out.
+
+### Retrieval (Holdout-22, overlap threshold 0.65)
+
+| Hit@1 | Hit@5 | Hit@10 | MRR |
+|-------|-------|--------|-----|
+| 0.68 | **0.95** | 0.95 | 0.78 |
+
+### Key Limitations
+
+- **Holdout-22 contamination**: Part B config selected on these 22 questions. AAPL50 is the clean estimate.
+- **FB27 gate not met**: 17/27 = 62.96% coverage, below the >63% threshold.
+- **Oracle ceiling 77.3%**: Even gold-retrieved context yields 77.3% precision, suggesting 5/22 questions have evaluation-metric or answer-quality issues independent of retrieval.
+- **Eval metric narrowness**: `span_match` + `numeric_match` may miss correct paraphrases.
+- **n=50 max**: All clean benchmarks cover ≤7 companies (AAPL, MMM, BA, KO, NFLX, PFE, OOC companies). Sector generalization is untested.
 
 ## Project Structure
 
