@@ -227,6 +227,96 @@ Step 4 is deferred until after Tier 3.
 
 ---
 
+## Phase 0 — Infrastructure audit (2026-09-30, free)
+
+### 0a — Production resolution
+`query_decomposer_node` calls GPT-4o via `DECOMPOSITION_SYSTEM_PROMPT`; it
+extracts `company_ticker` and `fiscal_year` from query text. No fallback
+injection in production. Previous FB27 Part B eval (b630a6b) applied:
+`if ticker and not filters.get("company_ticker"): filters["company_ticker"] = ticker`
+after decompose — this is NOT the production path. Two lines added to README.
+
+### 0b — Fresh held-out set
+Public FinanceBench (PatronusAI, 150 questions) contains exactly 27 questions
+for indexed companies (MMM, BA, KO, NFLX, PFE). AAPL absent entirely. All 27 are
+already FB27. **Zero fresh candidates.** User decision required on alternative
+(Option A: hand-craft 15 from AAPL/KO/MMM filings; Option B: use AAPL50 custom_eval;
+Option C: no fresh-set arm). Awaiting user choice.
+
+### 0c — Cache verification
+Replay of Q17 (KO FY2022 net income) with 479 existing cache entries: **4H/0M** —
+decompose, grade, generate, guard all hit cache. Zero new API calls. Cache key =
+SHA-256(model, messages, temp, seed, response_format). ✅ Cache works correctly.
+
+### 0d — Stub-LLM mode + smoke test
+Created `src/utils/llm_stub.py`: monkey-patches `Completions.create` with canned
+responses keyed by system-prompt fingerprint. Fix: generator detected before
+sufficiency_grader (generator prompt contains "sufficient information" in rule 3,
+causing false match).
+Created `scripts/eval/smoke_test_stub.py`: 3 questions (AAPL/KO/BA), full Part B
+loop, NO ticker injection, zero API calls.
+**Result: PASS** — all 3 tests pass, 12 stub calls (4/question), nodes hit:
+{decomposer, sufficiency_grader, generator, guard}. ✅
+
+### 0e — Abstention root causes
+Indexed fiscal years per ticker:
+- AAPL: 2023, 2024, 2025 | BA: 2018, 2022 | KO: 2017, 2021, 2022
+- MMM: 2018, 2022, 2023, 2024, 2025 | NFLX: 2015, 2017 | PFE: 2021, 2023
+
+All 8 abstentions have the relevant filing indexed. Root causes:
+
+| Q | Type | Root cause |
+|---|------|------------|
+| Q07 MMM debt securities | grader-strict | INSUFFICIENT after 2 rewrite cycles |
+| Q09 BA net PPNE FY2018 | grader-strict | INSUFFICIENT after 2 rewrite cycles |
+| Q13 BA primary customers | grader-strict | INSUFFICIENT after 2 rewrite cycles |
+| Q20 NFLX EBITDA % | generator-abstain | action=generate but generator self-abstains |
+| Q21 NFLX current liabilities | generator-abstain | action=generate but generator self-abstains |
+| Q22 PFE PPNE growth | grader-strict | INSUFFICIENT after 2 rewrite cycles |
+| Q24 PFE acquisitions | grader-strict | INSUFFICIENT after 2 rewrite cycles |
+| Q25 PFE Upjohn cost | grader-strict | INSUFFICIENT after 2 rewrite cycles |
+
+Note: enriched_contexts present but grader still returns INSUFFICIENT — context
+retrieval is not the failure mode; grader evaluation of pooled context is.
+
+---
+
+## Phase A — FB27 Production Path (no ticker injection) — COMPLETE (2026-10-01)
+
+File: `results/eval/fb27_no_injection_20261001_000652.json`
+Git: b5f9c2e, dirty=True | Cost: $0.9228 | Cache: 123H/17M
+
+**Production path**: decomposer extracts company_ticker from query text only. No fallback injection.
+**Ticker resolution**: 27/27 correct — GPT-4o correctly extracted all tickers.
+
+### FB27 (n=27) — Production path vs. Injected
+
+| Config | n | answered | correct | incorrect | abstained | coverage | prec@ans |
+|--------|---|----------|---------|-----------|-----------|----------|----------|
+| Injected Part B (b630a6b) | 27 | 17 | 15 | 2 | 10 | 62.96% | 88.2% |
+| **No-injection (Phase A, this)** | 27 | **16** | **15** | **1** | **11** | **59.3%** | **93.8%** |
+
+**Net change**: -1 answered, same correct (15), -1 incorrect, +1 abstained
+**Cause of change**: Q26 PFE (geographic region drop) — was answered-incorrect under injection,
+now abstained (hallucination guard caught wrong answer → exhausted 2 cycles). This is an
+improvement in answer quality; the system now refuses rather than giving a wrong answer.
+
+### Retrieval (n=27)
+
+| Hit@1 | Hit@3 | Hit@5 | Hit@10 | MRR |
+|-------|-------|-------|--------|-----|
+| 0.7407 | 0.8889 | 0.9630 | 0.9630 | 0.8235 |
+
+Retrieval improved vs. injected (Hit@5 was 0.9545 on holdout-22; now 0.9630 on all 27).
+
+### Q20/Q21 self-abstentions persist
+Both NFLX questions still self-abstain despite action=generate (PARTIAL verdict, confidence=medium).
+Generator triggers rule 3 ("context truly does not contain sufficient information") even when
+grader approved generation. Root cause: generator over-cautious for multi-component calculations
+(EBITDA requires operating income + D&A; generator abstains if it doesn't find all components).
+
+---
+
 ## Cumulative OpenAI Spend
 
 | Run | n | est. cost | actual cost |
@@ -237,6 +327,8 @@ Step 4 is deferred until after Tier 3.
 | Part B Tier 2+OOC (holdout-22+20) | 42 | ~$0.70 | $0.7007 |
 | Cycle 2 Tier 1 (Q01-Q16, reverted) | 16 | ~$0.10 | $0.4848 |
 | Cycle 2 Tier 2+OOC (holdout-22+20, reverted) | 42 | ~$0.05 | ~$0.05 |
-| **Running total** | | **~$3.16** | **~$3.16** |
+| Phase A FB27 no-injection | 27 | ~$1.00 | $0.9228 |
+| **Running total (this session)** | | | **$0.9228** |
 
-**Hard cap**: $10.00 total. Stop and ask before exceeding.
+**Session hard cap**: $4.30 new spend. Remaining: $4.30 − $0.9228 = ~$3.38.
+**Ragas hold-back**: $1.50. Available for Phase B: ~$3.38 − $1.50 = ~$1.88.
