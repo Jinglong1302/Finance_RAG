@@ -27,7 +27,8 @@ Effort: **S** = under an hour, **M** = half a day to a day, **L** = more. "Moves
 
 - **Where:** `src/orchestration/graph.py:16` and `:190` wire `grader_node` (the older per-chunk grader). The pooled "Part B" `sufficiency_grader_node` is used only by hand-written loops in eval scripts (`scripts/eval/eval_fb27_no_injection.py:94-114`, `eval_part_b.py`, `eval_part_b_aapl50.py`, `smoke_test_stub.py:74-88`).
 - **Why it matters:** `scripts/query.py`, the web UI (`src/ui/server.py:65`) and `eval_fullscale_baselines.py` (which the README calls "production graph") all run the per-chunk grader. README "v1.0 — Part B pooled-context sufficiency grader, production path" does not describe what the app does.
-- **Fix:** decide which grader is production. Then either wire it in `graph.py:190`, or add a `grader=` argument to `build_crag_graph` and make the eval scripts use the graph instead of their own loops (see item 19). Add a test that inspects the compiled graph's `grade` node.
+- **Decision (owner, 2026-10-23):** production uses the Part B `sufficiency_grader_node`.
+- **Fix:** wire `sufficiency_grader_node` in `graph.py:16` and `:190`, or or add a `grader=` argument to `build_crag_graph` and make the eval scripts use the graph instead of their own loops (see item 19). Add a test that inspects the compiled graph's `grade` node.
 - **Effort:** S once decided. **Moves files:** no.
 
 ### 3. Web UI renders model output as raw HTML — **security, medium** [read]
