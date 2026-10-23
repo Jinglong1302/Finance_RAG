@@ -13,13 +13,13 @@ from langgraph.graph import END, StateGraph
 
 from src.embedding.embedder import BGEEmbedder
 from src.orchestration.nodes.generator import generator_node
-from src.orchestration.nodes.grader import grader_node
 from src.orchestration.nodes.hallucination_guard import hallucination_guard_node
 from src.orchestration.nodes.note_expander import make_note_expander_node
 from src.orchestration.nodes.query_decomposer import query_decomposer_node
 from src.orchestration.nodes.query_rewriter import query_rewriter_node
 from src.orchestration.nodes.reranker_node import make_reranker_node
 from src.orchestration.nodes.retriever import make_retriever_node
+from src.orchestration.nodes.sufficiency_grader import sufficiency_grader_node
 from src.orchestration.state import CRAGState
 from src.retrieval.hybrid_search import HybridSearcher
 from src.retrieval.parent_expander import ParentExpander
@@ -187,7 +187,7 @@ def build_crag_graph(
     workflow.add_node("retrieve", retriever)
     workflow.add_node("rerank", reranker_node)
     workflow.add_node("expand_notes", note_expander)
-    workflow.add_node("grade", grader_node)
+    workflow.add_node("grade", sufficiency_grader_node)
     workflow.add_node("generate", generator_node)
     workflow.add_node("guard", hallucination_guard_node)
     workflow.add_node("rewrite", query_rewriter_node)

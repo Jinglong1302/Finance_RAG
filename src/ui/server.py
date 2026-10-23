@@ -118,11 +118,13 @@ def create_app() -> web.Application:
         import src.orchestration.nodes.query_rewriter
         import src.orchestration.nodes.reranker_node
         import src.orchestration.nodes.retriever
+        import src.orchestration.nodes.sufficiency_grader
 
         for mod in [
             src.orchestration.nodes.retriever,
             src.orchestration.nodes.reranker_node,
             src.orchestration.nodes.grader,
+            src.orchestration.nodes.sufficiency_grader,
             src.orchestration.nodes.generator,
             src.orchestration.nodes.hallucination_guard,
             src.orchestration.nodes.query_decomposer,

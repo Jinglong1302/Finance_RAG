@@ -66,9 +66,6 @@ class CrossEncoderReranker:
         if not candidates:
             return []
 
-        if len(candidates) <= top_k:
-            return candidates
-
         # Check score cache
         uncached_indices: list[int] = []
         uncached_pairs: list[list[str]] = []
