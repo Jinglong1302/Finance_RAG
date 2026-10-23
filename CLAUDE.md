@@ -11,7 +11,8 @@ Question answering over SEC 10-K filings: hybrid search (BGE-M3 + Qdrant) → cr
 | `src/retrieval/` | Hybrid search, reranker, parent expansion | `src/retrieval/CLAUDE.md` |
 | `src/orchestration/` | Graph, pipeline steps (`nodes/`), prompts | `src/orchestration/CLAUDE.md` |
 | `src/utils/llm_client.py` | The only place that picks the AI provider and model | |
-| `src/evaluation/`, `scripts/eval/` | Metrics and eval runners | `scripts/eval/CLAUDE.md` |
+| `src/evaluation/` | Metrics, eval question loaders (`eval_data.py`), shared eval helpers (`eval_helpers.py`) | |
+| `scripts/eval/` | Eval runners; retired ones in `archive/` | `scripts/eval/CLAUDE.md` |
 | `src/ui/`, `scripts/serve.py` | Local web dashboard | |
 | `tests/` | Offline unit tests | `tests/CLAUDE.md` |
 | `docs/README.md` | Map of every doc (guides, engineering, history) | |

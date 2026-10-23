@@ -114,6 +114,8 @@ So the README's evaluation numbers (coverage, precision, Ragas scores) are **not
 | `feat/llm-provider-gemini` (`4423984`) | 129 passed / 0 failed, also with both API keys unset | 60/60 | +9 tests (provider selection, Gemini price); ruff 547 |
 | `docs/organize-structure` | 129 passed / 0 failed, also with both API keys unset | 60/60 | per folder: chunking 16, evaluation 37, ingestion 24, orchestration 24, retrieval 5, ui 4, utils 19; compileall OK; ruff 547 |
 
+| `refactor/eval-structure` | 138 passed / 0 failed | 62/62 | +9 tests (shared eval loaders/helpers); scripts/eval imports 16/16; script-to-script imports 0; ruff 545 |
+
 Note: the per-folder loop in section 5 now also needs `test_retrieval`.
 
 ## 5. Commands to rerun this baseline

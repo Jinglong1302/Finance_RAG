@@ -21,7 +21,7 @@ from openai import OpenAI
 from rich.console import Console
 from rich.table import Table
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parents[3]))
 
 from config.settings import get_settings
 from src.utils.llm_client import chat_completion, get_llm_client, get_llm_model

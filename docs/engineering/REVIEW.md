@@ -19,6 +19,8 @@ Effort: **S** = under an hour, **M** = half a day to a day, **L** = more. "Moves
 | 9. Ragas judge mismatch | **Fixed**: all three `ragas.evaluate` calls pass the configured judge and embeddings | same commit |
 | 17. New client per call | **Fixed**: one shared client in `src/utils/llm_client.py` | same commit |
 | 21. Docs drift | **Partly**: README tree, docs map and history labels fixed in `docs/organize-structure`; the reranker-name question is answered (owner's `.env` uses `bge-reranker-base`) | branch `docs/organize-structure` |
+| 19. Eval scripts import each other | **Fixed**: shared code moved to `src/evaluation/eval_data.py` and `eval_helpers.py`; script-to-script imports 11 → 0. The runners still copy the graph steps instead of calling `build_crag_graph` | branch `refactor/eval-structure` |
+| Structure: one-off scripts | **Done**: `eval_ablations`, `eval_oracle`, `run_all_evals`, `generate_3_way_report` moved to `scripts/eval/archive/` | same branch |
 | All others | Open | — |
 
 New finding while running evals: the Gemini free tier allows **20 requests per day per model**, too few for any eval run (see `docs/guides/evaluation.md`). Errors from that limit become scored "answers" (item 6), so item 6 matters more now.

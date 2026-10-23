@@ -220,11 +220,11 @@ a full table.
 │   ├── embedding/   # BGE-M3 dense+sparse, Qdrant indexing
 │   ├── retrieval/   # Hybrid search, reranking, parent expansion
 │   ├── orchestration/  # LangGraph CRAG graph, pipeline steps, prompts
-│   ├── evaluation/  # Ragas metrics, benchmarks, cost tracking
+│   ├── evaluation/  # Ragas metrics, benchmarks, eval data loaders and helpers
 │   ├── ui/          # Local web dashboard (aiohttp + static files)
 │   └── utils/       # LLM client, disk cache, stub LLM, tokens, logging
 ├── scripts/         # CLI entry points (query, ingest, serve)
-│   └── eval/        # Evaluation runners
+│   └── eval/        # Evaluation runners (retired ones in eval/archive/)
 ├── tests/           # Offline unit tests
 ├── data/eval/       # Eval question sets (licences in data/README.md)
 ├── results/         # Eval output (gitignored except FINAL.md, README.md, archive/INDEX.md)
