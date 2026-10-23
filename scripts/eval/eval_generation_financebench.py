@@ -40,7 +40,7 @@ from src.utils.logging import setup_logging
 
 console = Console()
 
-IN_CORPUS_COMPANIES = {"3M", "Boeing", "Coca-Cola", "Netflix", "Pfizer"}
+OOC_EXCLUDED_COMPANIES = {"3M", "Boeing", "Coca-Cola", "Netflix", "Pfizer"}
 CORPUS_TICKER_MAP = {
     "3M": "MMM",
     "Boeing": "BA",
@@ -92,7 +92,7 @@ def _load_in_corpus_fb() -> list[tuple[EvalSample, str]]:
     pairs = []
     for row in rows:
         company = row.get("company", "")
-        if company not in IN_CORPUS_COMPANIES:
+        if company not in OOC_EXCLUDED_COMPANIES:
             continue
         ev = row.get("evidence", [])
         evidence_text = (
@@ -302,7 +302,7 @@ def main() -> None:
     )
 
     from collections import Counter
-    from scripts.eval.eval_abstention import classify_response
+    from src.evaluation.eval_helpers import classify_response
     from src.evaluation.eval_helpers import check_filing_indexed
     from src.evaluation.metrics import classify_qa_result, span_match
 

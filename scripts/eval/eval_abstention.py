@@ -36,85 +36,15 @@ from rich.console import Console
 from rich.table import Table
 
 from config.settings import get_settings
+from src.evaluation.eval_data import load_out_of_corpus
+from src.evaluation.eval_helpers import classify_response
 from src.utils.logging import setup_logging
 
 console = Console()
 
-# Companies whose 10-Ks are indexed in Qdrant
-IN_CORPUS_COMPANIES = {"3M", "Boeing", "Coca-Cola", "Netflix", "Pfizer", "Apple"}
-
-# Extended refusal phrases (mirrors ragas_eval._is_refusal + extras)
-_REFUSAL_PHRASES = (
-    "could not find sufficient evidence",
-    "insufficient evidence",
-    "not enough information",
-    "no information found",
-    "unable to locate",
-    "not available in",
-    "not indexed",
-    "outside the scope",
-    "not in the provided",
-    "i don't have",
-    "cannot find",
-    "no relevant",
-    "i was unable",
-    "the filing is not",
-)
-
-_HEDGE_PHRASES = (
-    "it is unclear",
-    "might be",
-    "could not verify",
-    "unverified",
-    "possibly",
-    "likely",
-    "may have",
-    "cannot be definitively",
-    "not explicitly stated, but",
-)
-
-
-def classify_response(answer: str, state: dict | None = None) -> str:
-    """Deterministically classify response into 'abstain', 'hedge', or 'answer'.
-
-    Machine-classifiable without requiring an LLM judge:
-    1. 'abstain': Emits [ABSTAIN] prefix, state['is_abstention'] == True, or explicit refusal phrase.
-    2. 'hedge': Non-refusal containing speculative or unverified hedge markers.
-    3. 'answer': Confident attempt to provide a factual answer.
-    """
-    if state and state.get("is_abstention"):
-        return "abstain"
-    if answer.strip().startswith("[ABSTAIN]"):
-        return "abstain"
-
-    lower = answer.lower()
-    if any(p in lower for p in _REFUSAL_PHRASES):
-        return "abstain"
-
-    if any(p in lower for p in _HEDGE_PHRASES):
-        return "hedge"
-
-    return "answer"
-
 
 def _is_refusal(answer: str, state: dict | None = None) -> bool:
     return classify_response(answer, state) == "abstain"
-
-
-def load_out_of_corpus() -> list[dict]:
-    local_path = Path(__file__).parent.parent.parent / "data" / "eval" / "abstention_eval.jsonl"
-    if local_path.exists():
-        return [json.loads(l) for l in open(local_path, encoding="utf-8") if l.strip()]
-
-    from huggingface_hub import hf_hub_download
-
-    path = hf_hub_download(
-        repo_id="PatronusAI/financebench",
-        filename="financebench_merged.jsonl",
-        repo_type="dataset",
-    )
-    rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
-    return [r for r in rows if r.get("company", "") not in IN_CORPUS_COMPANIES]
 
 
 def main() -> None:

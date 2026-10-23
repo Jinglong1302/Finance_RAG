@@ -26,7 +26,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config.settings import get_settings
 from src.utils.llm_client import get_llm_model
-from scripts.eval.eval_abstention import classify_response, load_out_of_corpus
+from src.evaluation.eval_data import load_out_of_corpus
+from src.evaluation.eval_helpers import classify_response
 from scripts.eval.eval_generation_financebench import (
     CORPUS_TICKER_MAP,
     _load_custom_eval,
