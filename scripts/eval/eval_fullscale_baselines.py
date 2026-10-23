@@ -25,6 +25,7 @@ from rich.table import Table
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config.settings import get_settings
+from src.utils.llm_client import get_llm_model
 from scripts.eval.eval_abstention import classify_response, load_out_of_corpus
 from scripts.eval.eval_generation_financebench import (
     CORPUS_TICKER_MAP,
@@ -283,7 +284,7 @@ def main() -> None:
         "git_commit": sha,
         "dirty": dirty,
         "config": {
-            "model": settings.openai_model,
+            "model": get_llm_model(),
             "reranker_model": settings.reranker_model,
             "embedding_model": settings.embedding_model,
             "qdrant_collection": settings.qdrant_collection,

@@ -77,7 +77,6 @@ def main() -> None:
             qdrant_client=qdrant_client,
             embedder=embedder,
             collection_name=settings.qdrant_collection,
-            openai_model=settings.openai_model,
             top_k=args.top_k,
         )
         if args.query:

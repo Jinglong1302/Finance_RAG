@@ -45,6 +45,7 @@ class FakeExpander:
 @pytest.fixture
 def stub_llm(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-used")
     enable_stub_mode()
     yield
     disable_stub_mode()

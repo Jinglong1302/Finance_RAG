@@ -32,6 +32,7 @@ from rich.console import Console
 from rich.table import Table
 
 from config.settings import get_settings
+from src.utils.llm_client import chat_completion, get_llm_client, get_llm_model
 from src.evaluation.numeric_eval import evaluate_numeric_accuracy, numeric_match
 from src.utils.logging import setup_logging
 
@@ -170,7 +171,7 @@ def _generate_naive(
     """Naive baseline path: direct conversational prompt without structured blocks or hallucination checks."""
     t0 = time.perf_counter()
     try:
-        resp = llm.chat.completions.create(
+        resp, _ = chat_completion(
             model=model,
             messages=[
                 {"role": "system", "content": _NAIVE_SYSTEM_PROMPT},
@@ -209,14 +210,14 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging(args.log_level)
-    settings = get_settings()
+    get_settings()  # loads .env into the environment
 
     console.print("[bold cyan]Slice 3 — TAT-QA Generation (context-injected)[/bold cyan]")
 
     samples = load_tatqa_samples(args.n)
     console.print(f"Loaded {len(samples)} TAT-QA samples")
 
-    llm = OpenAI()
+    llm = get_llm_client()
 
     # Two distinct generation paths:
     # 1. CRAG: generator_node with structured prompt + step-by-step arithmetic + hallucination guardrail
@@ -238,7 +239,7 @@ def main() -> None:
         console.print("\n[bold]Running Naive generation path (baseline prompt)...[/bold]")
         for i, s in enumerate(samples):
             pred, lat = _generate_naive(
-                s["question"], s["context"], llm, settings.openai_model
+                s["question"], s["context"], llm, get_llm_model()
             )
             naive_preds.append(pred)
             naive_latencies.append(lat)

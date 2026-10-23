@@ -51,6 +51,7 @@ from rich.console import Console
 from rich.table import Table
 
 from config.settings import get_settings
+from src.utils.llm_client import get_llm_model
 from scripts.eval.eval_retrieval import (
     CORPUS_TICKER_MAP,
     _extract_evidence_entries,
@@ -347,7 +348,7 @@ def main() -> None:
         "dirty": dirty,
         "timestamp": ts,
         "config": {
-            "model": settings.openai_model,
+            "model": get_llm_model(),
             "reranker_model": settings.reranker_model,
             "embedding_model": settings.embedding_model,
             "qdrant_collection": settings.qdrant_collection,

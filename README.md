@@ -20,7 +20,7 @@ Enterprise-grade financial intelligence engine for querying SEC 10-K/10-Q filing
 - Python 3.11+
 - [Poetry](https://python-poetry.org/docs/#installation)
 - [Docker](https://docs.docker.com/get-docker/) (for local Qdrant)
-- OpenAI API key
+- A Gemini API key (default) or an OpenAI API key — see [Choosing the AI provider](#choosing-the-ai-provider)
 
 ### Setup
 
@@ -31,7 +31,7 @@ poetry install
 
 # Copy and configure environment
 cp .env.example .env
-# Edit .env with your OpenAI API key and email
+# Edit .env with your Gemini (or OpenAI) API key and email
 
 # Start Qdrant
 docker compose up -d
@@ -60,7 +60,7 @@ poetry run python scripts/query.py "What was Apple's total revenue in FY2024?"
 
 ### Reproduce Evaluations
 
-All eval scripts require Qdrant running and `OPENAI_API_KEY` set. Enable LLM disk cache to avoid re-spending on reruns (temp=0, seed=42 — deterministic).
+All eval scripts require Qdrant running and the key for your `LLM_PROVIDER` set. Enable LLM disk cache to avoid re-spending on reruns (temp=0; seed=42 on OpenAI — Gemini does not accept a seed).
 
 ```bash
 # Part A ablations (retrieval + generation baselines, no grader)
@@ -101,7 +101,22 @@ User Query → Query Decomposition (GPT-4o)
 
 **Company and fiscal-year resolution (production)**: `query_decomposer_node` calls GPT-4o with the decomposition prompt; the model extracts `company_ticker` and `fiscal_year` from the query text alone — no fallback injection occurs. The Part B FB27 eval (SHA b630a6b) injected the ticker after decompose; that is NOT the production path.
 
+### Choosing the AI provider
+
+Every pipeline step (decompose, grade, generate, guard, rewrite) and the Ragas judge use one provider, set in `.env`:
+
+```bash
+LLM_PROVIDER=gemini        # or: openai
+GEMINI_API_KEY=...         # when LLM_PROVIDER=gemini
+OPENAI_API_KEY=...         # when LLM_PROVIDER=openai
+LLM_MODEL=                 # blank = gemini-2.5-flash (gemini) or OPENAI_MODEL (openai)
+```
+
+Gemini is called through its OpenAI-compatible endpoint with the `openai` package already installed, so nothing extra needs installing. The provider code lives in `src/utils/llm_client.py`; all options are listed in `.env.example`. On a free-tier Gemini key, Pro models have no quota and Flash models are rate-limited, so evals run slowly (calls retry on HTTP 429).
+
 ## Evaluation Results
+
+> The numbers below were measured with **OpenAI GPT-4o** and, per the 2026-10-23 engineering review, before the cross-encoder reranker was actually being called. They have not yet been re-measured with Gemini or with the reranker fix.
 
 Final config: v1.0 (SHA b5f9c2e) — Part B pooled-context sufficiency grader, production path (no ticker injection).
 Methodology: LLM disk cache (temp=0, seed=42).

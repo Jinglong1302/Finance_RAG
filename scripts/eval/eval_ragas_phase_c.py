@@ -5,7 +5,7 @@ Scores the answered subsets of:
   2. AAPL50 (Part B, ticker-injected) — n=42 answered
 
 Metrics: faithfulness, context_precision, answer_relevancy, context_recall
-Judge model: gpt-4o (same as pipeline)
+Judge model: JUDGE_MODEL from .env (default: same model as the pipeline)
 
 Procedure:
   - Run 2-sample pilot first to estimate per-sample cost
@@ -38,6 +38,7 @@ enable_disk_cache()
 from rich.console import Console
 from src.evaluation.ragas_eval import _clean_answer_for_ragas, _format_contexts_for_ragas
 from src.utils.llm_cache import cache_stats
+from src.utils.llm_client import get_llm_config, get_ragas_judge
 
 console = Console()
 
@@ -123,9 +124,12 @@ def run_ragas(dataset: "Dataset", label: str) -> dict[str, float]:
     stats_before = cache_stats()
 
     console.print(f"\n[yellow]Running Ragas on {label} (n={len(dataset)})...[/yellow]")
+    judge_llm, judge_embeddings = get_ragas_judge()
     result = evaluate(
         dataset,
         metrics=[faithfulness, context_precision, answer_relevancy, context_recall],
+        llm=judge_llm,
+        embeddings=judge_embeddings,
     )
 
     elapsed = round(time.perf_counter() - t0, 1)
@@ -207,7 +211,8 @@ def main() -> None:
         "git_commit": sha,
         "dirty": dirty,
         "timestamp": ts,
-        "judge_model": "gpt-4o",
+        "judge_model": get_llm_config().judge_model,
+        "judge_embedding_model": get_llm_config().judge_embedding_model,
         "config": "v1.0 (pooled sufficiency grader, no ticker injection for FB27, ticker-injected for AAPL50)",
         "baseline": BASELINE,
         "fb27_no_injection": {

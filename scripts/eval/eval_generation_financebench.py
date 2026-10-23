@@ -206,9 +206,14 @@ def _run_ragas(ragas_data: dict[str, Any]) -> tuple[dict[str, float], list[dict[
     )
 
     ds = Dataset.from_dict(ragas_data)
+    from src.utils.llm_client import get_ragas_judge
+
+    judge_llm, judge_embeddings = get_ragas_judge()
     results = evaluate(
         ds,
         metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
+        llm=judge_llm,
+        embeddings=judge_embeddings,
     )
     scores: dict[str, float] = {}
     df = results.to_pandas()

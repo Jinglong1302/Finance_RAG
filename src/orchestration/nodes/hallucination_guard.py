@@ -10,14 +10,13 @@ import json
 import time
 from typing import Any
 
-from openai import OpenAI
-
 from src.orchestration.prompts.generation import format_context_for_generation
 from src.orchestration.prompts.guardrail import (
     GUARDRAIL_SYSTEM_PROMPT,
     GUARDRAIL_USER_PROMPT,
 )
 from src.orchestration.state import CRAGState
+from src.utils.llm_client import chat_completion
 from src.utils.logging import get_logger
 from src.utils.tokens import cost_from_usage
 
@@ -49,12 +48,10 @@ def hallucination_guard_node(state: CRAGState) -> dict[str, Any]:
     context = format_context_for_generation(enriched, include_parent=False)
 
     start_t = time.perf_counter()
-    client = OpenAI()
 
     try:
         query = state.get("original_query", "")
-        response = client.chat.completions.create(
-            model="gpt-4o",
+        response, model = chat_completion(
             messages=[
                 {"role": "system", "content": GUARDRAIL_SYSTEM_PROMPT},
                 {
@@ -73,7 +70,7 @@ def hallucination_guard_node(state: CRAGState) -> dict[str, Any]:
         result = json.loads(result_text)
 
         # Track cost (using actual usage including cache discount)
-        cost, token_detail = cost_from_usage(response.usage, "gpt-4o")
+        cost, token_detail = cost_from_usage(response.usage, model)
 
         check_result = result.get("result", "pass")
         issues = result.get("issues", [])
@@ -86,7 +83,7 @@ def hallucination_guard_node(state: CRAGState) -> dict[str, Any]:
 
         trace = {
             "node": "hallucination_guard",
-            "model": "gpt-4o",
+            "model": model,
             "prompt_tokens": token_detail["prompt_tokens"],
             "cached_tokens": token_detail["cached_tokens"],
             "completion_tokens": token_detail["completion_tokens"],

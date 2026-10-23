@@ -9,11 +9,11 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from openai import OpenAI
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
 from src.embedding.embedder import BGEEmbedder
+from src.utils.llm_client import chat_completion
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -32,7 +32,7 @@ class NaiveRAG:
         qdrant_client: Active QdrantClient instance.
         embedder: BGEEmbedder (uses only dense vector).
         collection_name: Qdrant collection to search.
-        openai_model: OpenAI model for generation.
+        openai_model: Chat model for generation; None = the configured LLM_MODEL.
         top_k: Number of chunks to retrieve (no reranking applied).
     """
 
@@ -41,7 +41,7 @@ class NaiveRAG:
         qdrant_client: QdrantClient,
         embedder: BGEEmbedder,
         collection_name: str,
-        openai_model: str = "gpt-4o",
+        openai_model: str | None = None,
         top_k: int = 5,
     ) -> None:
         self.client = qdrant_client
@@ -49,13 +49,6 @@ class NaiveRAG:
         self.collection_name = collection_name
         self.openai_model = openai_model
         self.top_k = top_k
-        self._llm: OpenAI | None = None
-
-    @property
-    def llm(self) -> OpenAI:
-        if self._llm is None:
-            self._llm = OpenAI()
-        return self._llm
 
     def retrieve(
         self, query: str, ticker: str | None = None
@@ -108,8 +101,8 @@ class NaiveRAG:
             for i, c in enumerate(chunks)
         )
         try:
-            resp = self.llm.chat.completions.create(
-                model=self.openai_model,
+            kwargs = {"model": self.openai_model} if self.openai_model else {}
+            resp, model = chat_completion(
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {
@@ -120,9 +113,10 @@ class NaiveRAG:
                 temperature=0,
                 seed=42,
                 max_tokens=512,
+                **kwargs,
             )
             answer = resp.choices[0].message.content or ""
-            cost, token_detail = cost_from_usage(resp.usage, self.openai_model)
+            cost, token_detail = cost_from_usage(resp.usage, model)
             return answer, cost, token_detail
         except Exception as e:
             logger.error(f"Naive generation failed: {e}")
@@ -188,7 +182,6 @@ def main() -> None:
         qdrant_client=qdrant,
         embedder=embedder,
         collection_name=settings.qdrant_collection,
-        openai_model=settings.openai_model,
         top_k=args.top_k,
     )
 

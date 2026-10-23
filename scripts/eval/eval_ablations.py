@@ -23,6 +23,7 @@ from rich.table import Table
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config.settings import get_settings
+from src.utils.llm_client import chat_completion, get_llm_client, get_llm_model
 from scripts.eval.eval_retrieval import (
     CORPUS_TICKER_MAP,
     _extract_evidence_entries,
@@ -56,7 +57,7 @@ def call_generator(client: OpenAI, model: str, query: str, contexts: list[dict],
         context=formatted_ctx,
     )
     t0 = time.perf_counter()
-    resp = client.chat.completions.create(
+    resp, _ = chat_completion(
         model=model,
         messages=[
             {"role": "system", "content": GENERATION_SYSTEM_PROMPT},
@@ -89,7 +90,7 @@ def main() -> None:
     expander = ParentExpander(qdrant, settings.qdrant_collection)
     ret_node = make_retriever_node(searcher)
     naive = NaiveRAG(qdrant, embedder, settings.qdrant_collection, top_k=10)
-    openai_client = OpenAI(api_key=settings.openai_api_key)
+    openai_client = get_llm_client()
 
     all_rows = load_in_corpus_financebench()
     holdout_rows = all_rows[5:]  # 22 holdout questions
@@ -156,7 +157,7 @@ def main() -> None:
         rrf_retrieval_results.append(r_res)
 
         # Generation
-        ans_rrf, lat_rrf, tok_rrf = call_generator(openai_client, settings.openai_model, query, rrf_enriched, confidence="medium")
+        ans_rrf, lat_rrf, tok_rrf = call_generator(openai_client, get_llm_model(), query, rrf_enriched, confidence="medium")
         refused_rrf = _is_refusal(ans_rrf)
         cls_rrf = classify_qa_result(ans_rrf, gt, is_indexed=True, is_refusal=refused_rrf)
         rrf_generation_results.append({
@@ -195,7 +196,7 @@ def main() -> None:
                 "metadata": meta,
             })
 
-        ans_naive, lat_naive, tok_naive = call_generator(openai_client, settings.openai_model, query, naive_ctx, confidence="medium")
+        ans_naive, lat_naive, tok_naive = call_generator(openai_client, get_llm_model(), query, naive_ctx, confidence="medium")
         refused_naive = _is_refusal(ans_naive)
         cls_naive = classify_qa_result(ans_naive, gt, is_indexed=True, is_refusal=refused_naive)
         naive_generation_results.append({
@@ -253,7 +254,7 @@ def main() -> None:
         "git_commit": sha,
         "dirty": dirty,
         "config": {
-            "model": settings.openai_model,
+            "model": get_llm_model(),
             "reranker_model": settings.reranker_model,
             "embedding_model": settings.embedding_model,
             "qdrant_collection": settings.qdrant_collection,

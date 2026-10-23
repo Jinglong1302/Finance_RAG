@@ -24,6 +24,7 @@ from rich.table import Table
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config.settings import get_settings
+from src.utils.llm_client import chat_completion, get_llm_client, get_llm_model
 from scripts.eval.eval_retrieval import (
     CORPUS_TICKER_MAP,
     _extract_evidence_entries,
@@ -76,7 +77,7 @@ def call_generator(client: OpenAI, model: str, query: str, contexts: list[dict])
         context=formatted_ctx,
     )
     t0 = time.perf_counter()
-    resp = client.chat.completions.create(
+    resp, _ = chat_completion(
         model=model,
         messages=[
             {"role": "system", "content": GENERATION_SYSTEM_PROMPT},
@@ -110,7 +111,7 @@ def main() -> None:
     searcher = HybridSearcher(qdrant, embedder, settings.qdrant_collection)
     expander = ParentExpander(qdrant, settings.qdrant_collection)
     reranker = CrossEncoderReranker(model_name=settings.reranker_model)
-    openai_client = OpenAI(api_key=settings.openai_api_key)
+    openai_client = get_llm_client()
     ret_node = make_retriever_node(searcher)
     rerank_node = make_reranker_node(reranker, expander)
 
@@ -133,7 +134,7 @@ def main() -> None:
 
         # 1. Gold only
         gold_ctx = build_gold_context(ev_entries, ticker, doc_period, doc_name)
-        ans1, lat1, tok1 = call_generator(openai_client, settings.openai_model, query, gold_ctx)
+        ans1, lat1, tok1 = call_generator(openai_client, get_llm_model(), query, gold_ctx)
         refused1 = _is_refusal(ans1)
         cls1 = classify_qa_result(ans1, gt, is_indexed=True, is_refusal=refused1)
         num_match1 = numeric_match(ans1, gt) if any(c.isdigit() for c in gt) else None
@@ -170,7 +171,7 @@ def main() -> None:
         pipeline_chunks = (state.get("enriched_contexts") or state.get("reranked_results") or [])[:4]
         # Combined context: gold chunk(s) + top-4 pipeline chunks
         combined_ctx = gold_ctx + pipeline_chunks
-        ans2, lat2, tok2 = call_generator(openai_client, settings.openai_model, query, combined_ctx)
+        ans2, lat2, tok2 = call_generator(openai_client, get_llm_model(), query, combined_ctx)
         refused2 = _is_refusal(ans2)
         cls2 = classify_qa_result(ans2, gt, is_indexed=True, is_refusal=refused2)
         num_match2 = numeric_match(ans2, gt) if any(c.isdigit() for c in gt) else None
@@ -226,7 +227,7 @@ def main() -> None:
         "git_commit": sha,
         "dirty": dirty,
         "config": {
-            "model": settings.openai_model,
+            "model": get_llm_model(),
             "reranker_model": settings.reranker_model,
             "embedding_model": settings.embedding_model,
             "qdrant_collection": settings.qdrant_collection,

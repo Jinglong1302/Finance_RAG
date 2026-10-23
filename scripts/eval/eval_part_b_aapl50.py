@@ -31,6 +31,7 @@ from rich.console import Console
 from rich.table import Table
 
 from config.settings import get_settings
+from src.utils.llm_client import get_llm_model
 from scripts.eval.eval_generation_financebench import _load_custom_eval
 from src.evaluation.numeric_eval import numeric_match
 from src.evaluation.ragas_eval import _is_refusal
@@ -227,7 +228,7 @@ def main() -> None:
         "dirty": dirty,
         "timestamp": ts,
         "config": {
-            "model": settings.openai_model,
+            "model": get_llm_model(),
             "reranker_model": settings.reranker_model,
             "grader": "sufficiency_grader_node",
         },

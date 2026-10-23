@@ -11,14 +11,13 @@ import json
 import time
 from typing import Any
 
-from openai import OpenAI
-
 from src.orchestration.prompts.grading import (
     GRADING_SYSTEM_PROMPT,
     GRADING_USER_PROMPT,
     format_chunks_for_grading,
 )
 from src.orchestration.state import CRAGState
+from src.utils.llm_client import chat_completion
 from src.utils.logging import get_logger
 from src.utils.tokens import cost_from_usage
 
@@ -69,12 +68,10 @@ def grader_node(state: CRAGState) -> dict[str, Any]:
          for e in enriched]
     )
 
-    client = OpenAI()
     start_t = time.perf_counter()
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
+        response, model = chat_completion(
             messages=[
                 {"role": "system", "content": GRADING_SYSTEM_PROMPT},
                 {
@@ -93,7 +90,7 @@ def grader_node(state: CRAGState) -> dict[str, Any]:
         result = json.loads(result_text)
 
         # Track cost (using actual usage including cache discount)
-        cost, token_detail = cost_from_usage(response.usage, "gpt-4o")
+        cost, token_detail = cost_from_usage(response.usage, model)
 
         grades = result.get("grades", [])
 
@@ -166,7 +163,7 @@ def grader_node(state: CRAGState) -> dict[str, Any]:
 
         trace = {
             "node": "grader",
-            "model": "gpt-4o",
+            "model": model,
             "prompt_tokens": token_detail["prompt_tokens"],
             "cached_tokens": token_detail["cached_tokens"],
             "completion_tokens": token_detail["completion_tokens"],
