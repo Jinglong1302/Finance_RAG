@@ -53,11 +53,7 @@ from rich.table import Table
 
 from config.settings import get_settings
 from src.utils.llm_client import get_llm_model
-from scripts.eval.eval_retrieval import (
-    CORPUS_TICKER_MAP,
-    _extract_evidence_entries,
-    load_in_corpus_financebench,
-)
+from src.evaluation.eval_data import CORPUS_TICKER_MAP, extract_evidence_entries, load_in_corpus_financebench
 from src.evaluation.metrics import (
     classify_qa_result,
     hit_at_k,
@@ -255,7 +251,7 @@ def main() -> None:
         ticker = CORPUS_TICKER_MAP[row["company"]]
         query = row["question"]
         gt = str(row["answer"])
-        ev_entries = _extract_evidence_entries(row)
+        ev_entries = extract_evidence_entries(row)
 
         console.print(f"  Q{q_num:02d} [{ticker}] {query[:60]}...")
 

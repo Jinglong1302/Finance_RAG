@@ -24,11 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config.settings import get_settings
 from src.utils.llm_client import chat_completion, get_llm_client, get_llm_model
-from scripts.eval.eval_retrieval import (
-    CORPUS_TICKER_MAP,
-    _extract_evidence_entries,
-    load_in_corpus_financebench,
-)
+from src.evaluation.eval_data import CORPUS_TICKER_MAP, extract_evidence_entries, load_in_corpus_financebench
 from src.evaluation.baseline import NaiveRAG
 from src.evaluation.metrics import check_chunk_evidence_detailed, classify_qa_result, hit_at_k, mrr, recall_at_k, span_match
 from src.evaluation.numeric_eval import numeric_match
@@ -105,7 +101,7 @@ def main() -> None:
         ticker = CORPUS_TICKER_MAP[row["company"]]
         query = row["question"]
         gt = str(row["answer"])
-        ev_entries = _extract_evidence_entries(row)
+        ev_entries = extract_evidence_entries(row)
 
         console.print(f"Evaluating Q{q_num:02d} [{ticker}]: {query[:60]}...")
 

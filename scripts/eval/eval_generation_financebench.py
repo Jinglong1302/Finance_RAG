@@ -303,7 +303,7 @@ def main() -> None:
 
     from collections import Counter
     from scripts.eval.eval_abstention import classify_response
-    from scripts.eval.eval_retrieval import check_filing_indexed
+    from src.evaluation.eval_helpers import check_filing_indexed
     from src.evaluation.metrics import classify_qa_result, span_match
 
     # Run CRAG

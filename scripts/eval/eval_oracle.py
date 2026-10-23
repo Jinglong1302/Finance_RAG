@@ -25,12 +25,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config.settings import get_settings
 from src.utils.llm_client import chat_completion, get_llm_client, get_llm_model
-from scripts.eval.eval_retrieval import (
-    CORPUS_TICKER_MAP,
-    _extract_evidence_entries,
-    check_filing_indexed,
-    load_in_corpus_financebench,
-)
+from src.evaluation.eval_data import CORPUS_TICKER_MAP, extract_evidence_entries, load_in_corpus_financebench
+from src.evaluation.eval_helpers import check_filing_indexed
 from src.evaluation.metrics import classify_qa_result, span_match
 from src.evaluation.numeric_eval import numeric_match
 from src.evaluation.ragas_eval import _is_refusal
@@ -128,7 +124,7 @@ def main() -> None:
         gt = str(row["answer"])
         doc_period = row.get("doc_period")
         doc_name = row.get("doc_name", "")
-        ev_entries = _extract_evidence_entries(row)
+        ev_entries = extract_evidence_entries(row)
 
         console.print(f"Processing Q{q_num:02d} [{ticker}]: {query[:60]}...")
 

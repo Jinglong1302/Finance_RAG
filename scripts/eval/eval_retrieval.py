@@ -39,6 +39,8 @@ from rich.console import Console
 from rich.table import Table
 
 from config.settings import get_settings
+from src.evaluation.eval_data import CORPUS_TICKER_MAP, extract_evidence_entries, load_in_corpus_financebench
+from src.evaluation.eval_helpers import check_filing_indexed
 from src.evaluation.metrics import (
     aggregate_retrieval_metrics,
     hit_at_k,
@@ -48,56 +50,6 @@ from src.evaluation.metrics import (
 from src.utils.logging import setup_logging
 
 console = Console()
-
-# FinanceBench company name → ticker (for Qdrant filter)
-CORPUS_TICKER_MAP: dict[str, str] = {
-    "3M": "MMM",
-    "Boeing": "BA",
-    "Coca-Cola": "KO",
-    "Netflix": "NFLX",
-    "Pfizer": "PFE",
-}
-IN_CORPUS_COMPANIES = set(CORPUS_TICKER_MAP.keys())
-
-
-def load_in_corpus_financebench() -> list[dict]:
-    """Load FinanceBench rows for in-corpus companies, returning raw dicts."""
-    import json
-
-    local_path = Path(__file__).parent.parent.parent / "data" / "eval" / "financebench_in_corpus.jsonl"
-    if local_path.exists():
-        return [json.loads(l) for l in open(local_path, encoding="utf-8") if l.strip()]
-
-    from huggingface_hub import hf_hub_download
-
-    path = hf_hub_download(
-        repo_id="PatronusAI/financebench",
-        filename="financebench_merged.jsonl",
-        repo_type="dataset",
-    )
-    rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
-    return [r for r in rows if r.get("company", "") in IN_CORPUS_COMPANIES]
-
-
-def check_filing_indexed(client: Any, collection_name: str, ticker: str, fiscal_year: Any, doc_name: str = "") -> bool:
-    """Audit whether the required filing is indexed in Qdrant."""
-    if not fiscal_year:
-        return True
-    try:
-        fy_int = int(fiscal_year)
-    except (ValueError, TypeError):
-        return True
-    form = "10-Q" if ("10Q" in doc_name.upper() or "10-Q" in doc_name.upper()) else "10-K"
-    from qdrant_client.models import FieldCondition, Filter, MatchValue
-    flt = Filter(
-        must=[
-            FieldCondition(key="company_ticker", match=MatchValue(value=ticker)),
-            FieldCondition(key="fiscal_year", match=MatchValue(value=fy_int)),
-            FieldCondition(key="filing_type", match=MatchValue(value=form)),
-        ]
-    )
-    records, _ = client.scroll(collection_name=collection_name, scroll_filter=flt, limit=1)
-    return len(records) > 0
 
 
 def evaluate_one(
@@ -284,25 +236,6 @@ def evaluate_one_naive(
     return result
 
 
-def _extract_evidence_entries(row: dict) -> list[dict[str, Any]]:
-    """Pull evidence entries (text + page_num + answer) from a FinanceBench row."""
-    evidences = row.get("evidence", [])
-    ans = str(row.get("answer", ""))
-    if isinstance(evidences, str):
-        return [{"evidence_text": evidences, "evidence_page_num": None, "answer": ans}] if evidences else []
-    entries = []
-    for e in evidences:
-        if isinstance(e, dict):
-            entries.append({
-                "evidence_text": e.get("evidence_text", ""),
-                "evidence_page_num": e.get("evidence_page_num"),
-                "answer": ans,
-            })
-        elif isinstance(e, str) and e:
-            entries.append({"evidence_text": e, "evidence_page_num": None, "answer": ans})
-    return entries
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Retrieval evaluation slice")
     parser.add_argument("--limit", type=int, default=None)
@@ -354,7 +287,7 @@ def main() -> None:
     for i, row in enumerate(rows):
         ticker = CORPUS_TICKER_MAP[row["company"]]
         q = row.get("question", "")
-        evidence_entries = _extract_evidence_entries(row)
+        evidence_entries = extract_evidence_entries(row)
 
         if not evidence_entries:
             console.print(f"[dim]  Q{i+1}: no evidence, skipping[/dim]")
