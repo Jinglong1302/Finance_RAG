@@ -39,7 +39,11 @@ from rich.console import Console
 from rich.table import Table
 
 from config.settings import get_settings
-from src.evaluation.eval_data import CORPUS_TICKER_MAP, extract_evidence_entries, load_in_corpus_financebench
+from src.evaluation.eval_data import (
+    CORPUS_TICKER_MAP,
+    extract_evidence_entries,
+    load_in_corpus_financebench,
+)
 from src.evaluation.eval_helpers import check_filing_indexed
 from src.evaluation.metrics import (
     aggregate_retrieval_metrics,

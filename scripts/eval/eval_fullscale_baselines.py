@@ -30,10 +30,8 @@ from src.evaluation.eval_data import load_out_of_corpus
 from src.evaluation.eval_helpers import classify_response
 from src.evaluation.eval_data import CORPUS_TICKER_MAP, load_custom_eval, load_in_corpus_fb_samples
 from src.evaluation.eval_helpers import run_crag, run_ragas
-from scripts.eval.eval_generation_tatqa import (
-    _generate_crag,
-    load_tatqa_samples,
-)
+from src.evaluation.eval_data import load_tatqa_samples
+from src.evaluation.eval_helpers import generate_crag_from_context
 from src.evaluation.metrics import classify_qa_result, span_match
 from src.evaluation.numeric_eval import evaluate_numeric_accuracy, numeric_match
 from src.evaluation.ragas_eval import _clean_answer_for_ragas, _format_contexts_for_ragas, _is_refusal
@@ -110,7 +108,7 @@ def main() -> None:
         q = sample["question"]
         ctx = sample["context"]
         gt = sample["answer_str"]
-        ans, lat = _generate_crag(q, ctx)
+        ans, lat = generate_crag_from_context(q, ctx)
         refused = _is_refusal(ans)
         num_m = numeric_match(ans, gt) if any(c.isdigit() for c in gt) else None
         sp_m = span_match(ans, gt)

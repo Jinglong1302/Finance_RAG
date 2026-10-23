@@ -97,10 +97,10 @@ def run_ragas(ragas_data: dict[str, Any]) -> tuple[dict[str, float], list[dict[s
     from datasets import Dataset
     from ragas import evaluate
     from ragas.metrics import (
-        faithfulness,
         answer_relevancy,
         context_precision,
         context_recall,
+        faithfulness,
     )
 
     ds = Dataset.from_dict(ragas_data)

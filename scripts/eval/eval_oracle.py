@@ -25,7 +25,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config.settings import get_settings
 from src.utils.llm_client import chat_completion, get_llm_client, get_llm_model
-from src.evaluation.eval_data import CORPUS_TICKER_MAP, extract_evidence_entries, load_in_corpus_financebench
+from src.evaluation.eval_data import (
+    CORPUS_TICKER_MAP,
+    extract_evidence_entries,
+    load_in_corpus_financebench,
+)
 from src.evaluation.eval_helpers import check_filing_indexed
 from src.evaluation.metrics import classify_qa_result, span_match
 from src.evaluation.numeric_eval import numeric_match
