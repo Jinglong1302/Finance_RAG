@@ -21,7 +21,7 @@ Each number in `FINAL.md` and `README.md` traces to a specific result file and g
 The **Holdout-22 Part B combined numbers** (14/22 answered, 13 correct, coverage=63.6%, prec=92.9%)
 are derived by combining two files: `part_b_tier2_20260930_162704.json` (Q06-Q27) with
 `part_b_tier1_20260930_161638.json` (Q01-Q16 overlap). The merged holdout-22 metrics are
-reported in `docs/PROGRESS.md` and cited in `FINAL.md`.
+reported in `docs/history/2026-10-01-eval-progress-log.md` and cited in `FINAL.md`.
 
 The **injected Part B FB27 number** (17/27 answered, 15 correct, coverage=62.96%, prec=88.2%)
 is derived from the same tier1+tier2 Cycle 1 files with ticker injection applied in the harness.

@@ -8,9 +8,10 @@ Enterprise-grade financial intelligence engine for querying SEC 10-K/10-Q filing
 - **Hybrid Search** — BGE-M3 dense + sparse (lexical-weight) embeddings with RRF fusion
 - **Cross-Encoder Reranking** — BAAI/bge-reranker-base (overridable via `RERANKER_MODEL` env var)
 - **Corrective RAG (CRAG)** — LangGraph state machine with ≤2 rewrite cycles and explicit refusal
-- **Pooled-Context Sufficiency Grading** — Single GPT-4o call on concatenated top-k context (Part B)
+- **Pooled-Context Sufficiency Grading** — Single LLM call on concatenated top-k context (Part B)
 - **Parent-Child Chunk Hierarchy** — Retrieval on child chunks; parent text injected for context
-- **Hallucination Guard** — Post-generation GPT-4o faithfulness check; triggers rewrite on fail
+- **Hallucination Guard** — Post-generation LLM faithfulness check; triggers rewrite on fail
+- **Switchable AI provider** — Gemini (default) or OpenAI, chosen in `.env`
 - **Citation Mapping** — Structured citation objects with company/section/year metadata per answer
 
 ## Quick Start
@@ -80,26 +81,26 @@ python scripts/eval/eval_part_b_aapl50.py
 python scripts/eval/eval_fullscale_baselines.py
 ```
 
-Results are saved to `results/eval/` (gitignored except `results/FINAL.md`; progress log at `docs/PROGRESS.md`).
+Results are saved to `results/eval/` (gitignored except `results/FINAL.md`; past progress log at `docs/history/2026-10-01-eval-progress-log.md`).
 LLM cache stored in `results/llm_cache/` (gitignored). Estimated costs: see `results/FINAL.md`.
 
 ## Architecture
 
 ```
-User Query → Query Decomposition (GPT-4o)
+User Query → Query Decomposition (LLM)
            → Hybrid Search (Qdrant: BGE-M3 dense + sparse, RRF)
            → Cross-Encoder Reranking (bge-reranker-base, top-5)
            → Parent Expansion (child retrieval → parent context injection)
-           → Pooled Sufficiency Grading (GPT-4o, 1 call on concatenated top-k)
-           → [SUFFICIENT/PARTIAL] → Generation with Citations (GPT-4o)
-                                  → Hallucination Guard (GPT-4o)
+           → Pooled Sufficiency Grading (LLM, 1 call on concatenated top-k)
+           → [SUFFICIENT/PARTIAL] → Generation with Citations (LLM)
+                                  → Hallucination Guard (LLM)
            → [INSUFFICIENT, cycles < 2] → Query Rewrite → Re-retrieve
            → [INSUFFICIENT, cycles = 2] → Explicit Refusal
 ```
 
 **Current index**: MMM, BA, KO, NFLX, PFE, AAPL — 10-K filings — 6,971 Qdrant points
 
-**Company and fiscal-year resolution (production)**: `query_decomposer_node` calls GPT-4o with the decomposition prompt; the model extracts `company_ticker` and `fiscal_year` from the query text alone — no fallback injection occurs. The Part B FB27 eval (SHA b630a6b) injected the ticker after decompose; that is NOT the production path.
+**Company and fiscal-year resolution (production)**: `query_decomposer_node` calls the LLM with the decomposition prompt; the model extracts `company_ticker` and `fiscal_year` from the query text alone — no fallback injection occurs. The Part B FB27 eval (SHA b630a6b) injected the ticker after decompose; that is NOT the production path.
 
 ### Choosing the AI provider
 
@@ -174,7 +175,7 @@ Ticker resolution: 27/27 correct on production path. The coverage drop (−3.7pp
 
 ### Ragas Metrics (v1.0 final config, SHA 8893b0a)
 
-Judge model: gpt-4o (ragas 0.2.15). Answered subsets only (abstentions excluded).
+Judge model: the eval scripts did not set one, so Ragas 0.2.15 used its default, gpt-4o-mini (found in the 2026-10-23 review; the scripts now pass the configured judge). Answered subsets only (abstentions excluded).
 
 | Metric | Baseline† (94fdd2f) | FB27 no-inj (n=16) | AAPL50 (n=42) |
 |--------|--------------------|--------------------|---------------|
@@ -211,18 +212,28 @@ a full table.
 ## Project Structure
 
 ```
-├── config/          # Pydantic Settings configuration
+├── CLAUDE.md        # Short index and house rules (start here when changing code)
+├── config/          # Pydantic Settings configuration (reads .env)
 ├── src/
 │   ├── ingestion/   # SEC EDGAR download, HTML parsing, table extraction
 │   ├── chunking/    # Section-based chunking with parent-child hierarchy
 │   ├── embedding/   # BGE-M3 dense+sparse, Qdrant indexing
 │   ├── retrieval/   # Hybrid search, reranking, parent expansion
-│   ├── orchestration/  # LangGraph CRAG state machine
-│   └── evaluation/  # Ragas metrics, benchmarks, cost tracking
-├── scripts/         # CLI entry points
-├── notebooks/       # Exploration and analysis
-└── tests/           # Unit and integration tests
+│   ├── orchestration/  # LangGraph CRAG graph, pipeline steps, prompts
+│   ├── evaluation/  # Ragas metrics, benchmarks, cost tracking
+│   ├── ui/          # Local web dashboard (aiohttp + static files)
+│   └── utils/       # LLM client, disk cache, stub LLM, tokens, logging
+├── scripts/         # CLI entry points (query, ingest, serve)
+│   └── eval/        # Evaluation runners
+├── tests/           # Offline unit tests
+├── data/eval/       # Eval question sets (licences in data/README.md)
+├── results/         # Eval output (gitignored except FINAL.md, README.md, archive/INDEX.md)
+└── docs/            # Guides, engineering review, history — map in docs/README.md
 ```
+
+## Documentation
+
+Start at [`docs/README.md`](docs/README.md). It lists every guide, the engineering review and baseline, and the dated history docs.
 
 **Note on unused utilities**: `src/orchestration/nodes/calculator.py` is a sandboxed Python REPL
 utility for financial calculations (CAGR, margins, growth rates). It is not currently imported by

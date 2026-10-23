@@ -9,6 +9,20 @@ How each item was checked is marked:
 
 Effort: **S** = under an hour, **M** = half a day to a day, **L** = more. "Moves files" = needs `git mv`, so it belongs to phase 3.
 
+## Status (updated 2026-10-23, after phases 2 and 3 started)
+
+| Item | Status | Where |
+|---|---|---|
+| 1. Reranker never runs | **Fixed**, with tests that fail on the old code | branch `fix/production-grader-and-reranker` (`345bf10`) |
+| 2. Wrong grader in production | **Fixed**: Part B wired into the graph, as the owner decided | same commit |
+| 8. Settings that do nothing | **Partly**: the model now comes from `LLM_PROVIDER` / `LLM_MODEL`. `RETRIEVAL_TOP_K`, `RERANK_TOP_K*`, `MAX_CRAG_CYCLES` and `BUDGET_*` still do nothing | branch `feat/llm-provider-gemini` (`4423984`) |
+| 9. Ragas judge mismatch | **Fixed**: all three `ragas.evaluate` calls pass the configured judge and embeddings | same commit |
+| 17. New client per call | **Fixed**: one shared client in `src/utils/llm_client.py` | same commit |
+| 21. Docs drift | **Partly**: README tree, docs map and history labels fixed in `docs/organize-structure`; the reranker-name question is answered (owner's `.env` uses `bge-reranker-base`) | branch `docs/organize-structure` |
+| All others | Open | — |
+
+New finding while running evals: the Gemini free tier allows **20 requests per day per model**, too few for any eval run (see `docs/guides/evaluation.md`). Errors from that limit become scored "answers" (item 6), so item 6 matters more now.
+
 ## Fix first
 
 ### 1. The cross-encoder reranker never runs — **bug, high** [ran]

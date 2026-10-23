@@ -588,7 +588,7 @@ def _render_markdown(summary: dict, gates: dict[str, bool], ts: str) -> str:
         "",
         "---",
         "",
-        "> *Evaluation Architecture & Methodology:* see `docs/CHUNKING_ANALYSIS_REPORT.md` and `docs/EVALUATION_50_QA_GUIDE.md`.  ",
+        "> *Evaluation Architecture & Methodology:* see `docs/history/2026-09-25-chunking-analysis.md` and `docs/guides/aapl50-benchmark.md`.  ",
         "> Re-run with `poetry run python scripts/eval/run_all_evals.py` to refresh all slices.",
     ]
 

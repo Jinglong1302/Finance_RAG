@@ -1,5 +1,7 @@
 # 📋 Ingestion & Chunking Technical Execution Log
 
+> **Historical record from 2026-09-25.** Kept as written at the time; file names, numbers and plans may no longer match the code. For current docs start at [docs/README.md](../README.md).
+
 **Branch:** `feature/table-ingestion-markdown`  
 **Focus:** SEC 10-K Financial Table Parsing, Normalization, Header Injection, and Markdown Chunking.  
 **Started:** 2026-09-25 01:46 UTC  

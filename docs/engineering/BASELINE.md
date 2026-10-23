@@ -105,6 +105,17 @@ Ruff and mypy are not run by any CI today, so these are starting numbers, not fa
 
 So the README's evaluation numbers (coverage, precision, Ragas scores) are **not re-checked** by this baseline.
 
+## 4a. Later reruns (same commands)
+
+| When / branch | Tests | Import check | Notes |
+|---|---|---|---|
+| 2026-10-23, network allowed, `review/engineering-2026-10-23` | 113 passed / 0 failed | 59/59 | The 17 tiktoken tests pass once `openaipublic.blob.core.windows.net` is reachable |
+| `fix/production-grader-and-reranker` (`345bf10`) | 120 passed / 0 failed | not rerun | +7 tests (reranker, graph wiring) |
+| `feat/llm-provider-gemini` (`4423984`) | 129 passed / 0 failed, also with both API keys unset | 60/60 | +9 tests (provider selection, Gemini price); ruff 547 |
+| `docs/organize-structure` | 129 passed / 0 failed, also with both API keys unset | 60/60 | per folder: chunking 16, evaluation 37, ingestion 24, orchestration 24, retrieval 5, ui 4, utils 19; compileall OK; ruff 547 |
+
+Note: the per-folder loop in section 5 now also needs `test_retrieval`.
+
 ## 5. Commands to rerun this baseline
 
 Run from the repo root.
@@ -118,7 +129,7 @@ poetry install
 poetry run pytest -p no:cacheprovider -q
 
 # 3. Per-folder counts
-for d in test_chunking test_evaluation test_ingestion test_orchestration test_ui test_utils; do
+for d in test_chunking test_evaluation test_ingestion test_orchestration test_retrieval test_ui test_utils; do
   printf "%-20s " "$d"; poetry run pytest -p no:cacheprovider -q "tests/$d" 2>&1 | tail -1
 done
 

@@ -5,7 +5,8 @@ Runs the complete CRAG pipeline (decompose → retrieve → rerank → expand_no
 question with the company ticker injected after decomposition (matching the
 approach in eval_part_a_consolidated.py).
 
-This is the "true current baseline" referenced in PROGRESS.md Step 1.
+This is the "true current baseline" referenced in Step 1 of
+docs/history/2026-10-01-eval-progress-log.md.
 
 Key design choices
 ------------------
