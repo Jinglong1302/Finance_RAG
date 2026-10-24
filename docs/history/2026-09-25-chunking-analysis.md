@@ -1,5 +1,7 @@
 # 📊 Finance RAG: Chunking & Ingestion Improvement Analysis Report
 
+> **Historical record from 2026-09-25.** Kept as written at the time; file names, numbers and plans may no longer match the code. For current docs start at [docs/README.md](../README.md).
+
 **Date:** September 25, 2026  
 **Branch:** `feature/table-ingestion-markdown`  
 **Dataset & Scope:** SEC Form 10-K Filings (Apple Inc. / AAPL FY2021–FY2023)  

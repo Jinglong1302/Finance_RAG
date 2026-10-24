@@ -189,7 +189,12 @@ def run_ragas_evaluation(
 
     # Run Ragas evaluation
     logger.info(f"Computing Ragas metrics: {metrics}")
-    results = evaluate(eval_dataset, metrics=selected_metrics)
+    from src.utils.llm_client import get_ragas_judge
+
+    judge_llm, judge_embeddings = get_ragas_judge()
+    results = evaluate(
+        eval_dataset, metrics=selected_metrics, llm=judge_llm, embeddings=judge_embeddings
+    )
 
     # Save results
     output_path = Path(output_dir)

@@ -19,8 +19,8 @@ Do not use these numbers in reports — see `results/eval/` for canonical files.
 | summary_20260927_181738.json | Early dev eval run (2026-09-27); source for summary_latest.json | Superseded by part_a_consolidated_20260929_171614.json |
 | summary_latest.json | Snapshot copy of summary_20260927_181738.json | Superseded by part_a_consolidated_20260929_171614.json |
 | summary_3_pipelines.json | 3-pipeline comparison (RRF-only, naive dense, RRF+reranker) | Superseded by part_a_consolidated_20260929_171614.json |
-| ablations_eval.json | Part A ablation intermediate result (SHA 94fdd2f) | Superseded by part_a_consolidated_20260929_171614.json |
-| oracle_eval.json | Oracle test intermediate result (SHA 94fdd2f) | Superseded by part_a_consolidated_20260929_171614.json |
+| ablations_eval.json | Part A ablation intermediate result (SHA d4e92ea) | Superseded by part_a_consolidated_20260929_171614.json |
+| oracle_eval.json | Oracle test intermediate result (SHA d4e92ea) | Superseded by part_a_consolidated_20260929_171614.json |
 | retrieval_int8_diagnostics.json | INT8 quantization retrieval diagnostic | From reverted INT8 quantization experiment; not part of shipped config |
 | part_b_tier1_20260930_170002.json | Part B Tier1 Q01-Q16 Cycle 2 run (precision=76.9%) | Cycle 2 reverted; superseded by part_b_tier1_20260930_161638.json (Cycle 1 shipped) |
 | part_b_tier2_20260930_170337.json | Part B Tier2 Q06-Q27 Cycle 2 run | Cycle 2 reverted; superseded by part_b_tier2_20260930_162704.json (Cycle 1 shipped) |

@@ -34,90 +34,14 @@ from rich.console import Console
 from rich.table import Table
 
 from config.settings import get_settings
+from src.evaluation.eval_data import load_custom_eval, load_in_corpus_fb_samples
+from src.evaluation.eval_helpers import run_crag, run_ragas
 from src.evaluation.benchmarks import EvalSample, load_financebench
 from src.evaluation.numeric_eval import evaluate_numeric_accuracy
 from src.utils.logging import setup_logging
 
 console = Console()
 
-IN_CORPUS_COMPANIES = {"3M", "Boeing", "Coca-Cola", "Netflix", "Pfizer"}
-CORPUS_TICKER_MAP = {
-    "3M": "MMM",
-    "Boeing": "BA",
-    "Coca-Cola": "KO",
-    "Netflix": "NFLX",
-    "Pfizer": "PFE",
-}
-
-
-def _load_custom_eval() -> list[EvalSample]:
-    path = Path(__file__).parent.parent.parent / "data" / "eval" / "custom_eval.jsonl"
-    if not path.exists():
-        console.print(f"[yellow]custom_eval.jsonl not found at {path}[/yellow]")
-        return []
-    samples = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        item = json.loads(line)
-        samples.append(
-            EvalSample(
-                question=item["question"],
-                ground_truth=item["ground_truth"],
-                evidence=item.get("evidence", ""),
-                source="custom_aapl",
-                category=item.get("category", "extraction"),
-                difficulty=item.get("difficulty", ""),
-            )
-        )
-    console.print(f"Loaded {len(samples)} Apple custom QA samples")
-    return samples
-
-
-def _load_in_corpus_fb() -> list[tuple[EvalSample, str]]:
-    """Returns (EvalSample, ticker) pairs for in-corpus FinanceBench."""
-    local_path = Path(__file__).parent.parent.parent / "data" / "eval" / "financebench_in_corpus.jsonl"
-    if local_path.exists():
-        rows = [json.loads(l) for l in open(local_path, encoding="utf-8") if l.strip()]
-    else:
-        from huggingface_hub import hf_hub_download
-
-        path = hf_hub_download(
-            repo_id="PatronusAI/financebench",
-            filename="financebench_merged.jsonl",
-            repo_type="dataset",
-        )
-        rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
-    pairs = []
-    for row in rows:
-        company = row.get("company", "")
-        if company not in IN_CORPUS_COMPANIES:
-            continue
-        ev = row.get("evidence", [])
-        evidence_text = (
-            "\n".join(e.get("evidence_text", "") for e in ev if isinstance(e, dict))
-            if isinstance(ev, list)
-            else str(ev)
-        )
-        sample = EvalSample(
-            question=row.get("question", ""),
-            ground_truth=row.get("answer", ""),
-            evidence=evidence_text,
-            source="financebench",
-            category=row.get("question_reasoning", "extraction"),
-            doc_period=row.get("doc_period"),
-            doc_name=row.get("doc_name"),
-        )
-        ticker = CORPUS_TICKER_MAP[company]
-        pairs.append((sample, ticker))
-    console.print(f"Loaded {len(pairs)} in-corpus FinanceBench samples")
-    return pairs
-
-
-def _run_crag(graph: Any, question: str) -> dict[str, Any]:
-    from src.orchestration.graph import run_query
-    return run_query(graph, question)
 
 
 def _collect_crag_data(
@@ -148,7 +72,7 @@ def _collect_crag_data(
     for i, (sample, _ticker) in enumerate(sample_pairs):
         try:
             t0 = time.perf_counter()
-            result = _run_crag(graph, sample.question)
+            result = run_crag(graph, sample.question)
             latency = time.perf_counter() - t0
             total_latency += latency
 
@@ -194,44 +118,6 @@ def _collect_crag_data(
     return ragas_data, raw_answers, predictions, ground_truths, total_latency, crag_results
 
 
-def _run_ragas(ragas_data: dict[str, Any]) -> tuple[dict[str, float], list[dict[str, float | None]]]:
-    import pandas as pd
-    from datasets import Dataset
-    from ragas import evaluate
-    from ragas.metrics import (
-        faithfulness,
-        answer_relevancy,
-        context_precision,
-        context_recall,
-    )
-
-    ds = Dataset.from_dict(ragas_data)
-    results = evaluate(
-        ds,
-        metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
-    )
-    scores: dict[str, float] = {}
-    df = results.to_pandas()
-    cols = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]
-    for col in cols:
-        if col in df.columns:
-            valid_vals = df[col].dropna()
-            scores[col] = float(valid_vals.mean()) if len(valid_vals) > 0 else 0.0
-
-    per_sample: list[dict[str, float | None]] = []
-    for _, row in df.iterrows():
-        sample_scores: dict[str, float | None] = {}
-        for col in cols:
-            if col in df.columns:
-                val = row[col]
-                sample_scores[col] = float(val) if pd.notna(val) else None
-            else:
-                sample_scores[col] = None
-        per_sample.append(sample_scores)
-
-    return scores, per_sample
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generation eval — FinanceBench + Apple")
     parser.add_argument(
@@ -257,9 +143,9 @@ def main() -> None:
     # Load data
     all_pairs: list[tuple[EvalSample, str]] = []
     if args.source in ("all", "fb"):
-        all_pairs.extend(_load_in_corpus_fb())
+        all_pairs.extend(load_in_corpus_fb_samples())
     if args.source in ("all", "apple"):
-        all_pairs.extend((s, "AAPL") for s in _load_custom_eval())
+        all_pairs.extend((s, "AAPL") for s in load_custom_eval())
 
     if args.offset:
         all_pairs = all_pairs[args.offset :]
@@ -297,8 +183,8 @@ def main() -> None:
     )
 
     from collections import Counter
-    from scripts.eval.eval_abstention import classify_response
-    from scripts.eval.eval_retrieval import check_filing_indexed
+    from src.evaluation.eval_helpers import classify_response
+    from src.evaluation.eval_helpers import check_filing_indexed
     from src.evaluation.metrics import classify_qa_result, span_match
 
     # Run CRAG
@@ -355,7 +241,7 @@ def main() -> None:
     if not args.skip_ragas:
         console.print("\n[bold]Computing Ragas metrics...[/bold]")
         try:
-            crag_ragas_scores, crag_per_sample_ragas = _run_ragas(crag_ragas)
+            crag_ragas_scores, crag_per_sample_ragas = run_ragas(crag_ragas)
         except Exception as e:
             console.print(f"[red]Ragas failed: {e}[/red]")
 

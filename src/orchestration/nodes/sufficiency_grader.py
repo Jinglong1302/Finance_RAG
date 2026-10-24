@@ -27,14 +27,13 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from openai import OpenAI
-
 from src.orchestration.prompts.sufficiency import (
     SUFFICIENCY_SYSTEM_PROMPT,
     SUFFICIENCY_USER_PROMPT,
     format_context_for_sufficiency,
 )
 from src.orchestration.state import CRAGState
+from src.utils.llm_client import chat_completion
 from src.utils.logging import get_logger
 from src.utils.tokens import cost_from_usage
 
@@ -86,12 +85,10 @@ def sufficiency_grader_node(state: CRAGState) -> dict[str, Any]:
 
     # ── Stage 2: pooled sufficiency call ─────────────────────────────
     context_text = format_context_for_sufficiency(enriched)
-    client = OpenAI()
     start_t = time.perf_counter()
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
+        response, model = chat_completion(
             messages=[
                 {"role": "system", "content": SUFFICIENCY_SYSTEM_PROMPT},
                 {
@@ -107,7 +104,7 @@ def sufficiency_grader_node(state: CRAGState) -> dict[str, Any]:
             max_tokens=10,  # One-word response
         )
         duration_s = round(time.perf_counter() - start_t, 3)
-        cost, token_detail = cost_from_usage(response.usage, "gpt-4o")
+        cost, token_detail = cost_from_usage(response.usage, model)
 
         raw_verdict = (response.choices[0].message.content or "").strip().upper()
         # Normalise: take first word only in case the model adds punctuation
@@ -126,6 +123,7 @@ def sufficiency_grader_node(state: CRAGState) -> dict[str, Any]:
     except Exception as exc:
         logger.error("Sufficiency grader failed: %s; falling back to generate", exc)
         verdict = "PARTIAL"
+        model = "unavailable"
         cost, token_detail = 0.0, {"prompt_tokens": 0, "cached_tokens": 0, "completion_tokens": 0}
         duration_s = 0.0
 
@@ -149,7 +147,7 @@ def sufficiency_grader_node(state: CRAGState) -> dict[str, Any]:
     prev_trace = state.get("pipeline_trace") or []
     trace = {
         "node": "sufficiency_grader",
-        "model": "gpt-4o",
+        "model": model,
         "verdict": verdict,
         "action": action,
         "confidence": confidence,

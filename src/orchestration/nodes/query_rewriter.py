@@ -6,14 +6,13 @@ import json
 import time
 from typing import Any
 
-from openai import OpenAI
-
 from src.orchestration.prompts.rewriting import (
     REWRITING_SYSTEM_PROMPT,
     REWRITING_USER_PROMPT,
 )
 from src.orchestration.state import CRAGState
 from src.retrieval.query_expansion import expand_financial_query
+from src.utils.llm_client import chat_completion
 from src.utils.logging import get_logger
 from src.utils.tokens import estimate_cost
 
@@ -42,11 +41,9 @@ def query_rewriter_node(state: CRAGState) -> dict[str, Any]:
     failure_reason = _summarize_failure(grades, confidence)
 
     start_t = time.perf_counter()
-    client = OpenAI()
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
+        response, model = chat_completion(
             messages=[
                 {"role": "system", "content": REWRITING_SYSTEM_PROMPT},
                 {
@@ -69,7 +66,7 @@ def query_rewriter_node(state: CRAGState) -> dict[str, Any]:
         cost = 0.0
         if usage:
             cost = estimate_cost(
-                usage.prompt_tokens, usage.completion_tokens, "gpt-4o"
+                usage.prompt_tokens, usage.completion_tokens, model
             )
 
         # On Cycle 2: relax filters
@@ -95,7 +92,7 @@ def query_rewriter_node(state: CRAGState) -> dict[str, Any]:
         duration_s = round(time.perf_counter() - start_t, 3)
         trace = {
             "node": "query_rewriter",
-            "model": "gpt-4o",
+            "model": model,
             "original_query": query,
             "rewritten_query": rewritten,
             "cycle": new_cycle,

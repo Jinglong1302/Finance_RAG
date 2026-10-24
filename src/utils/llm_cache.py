@@ -4,7 +4,8 @@ Patches ``openai.resources.chat.completions.Completions.create`` at the class
 level so every ``OpenAI()`` instance — including those created inside pipeline
 nodes — benefits from the cache automatically.
 
-Cache key: SHA-256 of (model, messages, temperature, seed, response_format).
+Cache key: SHA-256 of (model, messages, temperature, seed, response_format),
+plus base URL (non-OpenAI providers) and reasoning_effort when set.
 Cache value: serialised ``ChatCompletion`` JSON on disk, one file per key.
 
 Usage
@@ -63,6 +64,13 @@ def enable_disk_cache(cache_dir: str | Path = "results/llm_cache") -> None:
             "seed": kwargs.get("seed"),
             "response_format": kwargs.get("response_format"),
         }
+        # Added only when present, so cache entries written before multi-provider
+        # support (OpenAI, no reasoning_effort) keep the same key.
+        base_url = str(getattr(getattr(self, "_client", None), "base_url", "") or "")
+        if base_url and "api.openai.com" not in base_url:
+            key_parts["base_url"] = base_url
+        if kwargs.get("reasoning_effort") is not None:
+            key_parts["reasoning_effort"] = kwargs["reasoning_effort"]
         raw = json.dumps(key_parts, sort_keys=True, default=str, ensure_ascii=False)
         key = hashlib.sha256(raw.encode()).hexdigest()
 

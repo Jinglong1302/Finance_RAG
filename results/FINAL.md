@@ -1,7 +1,7 @@
 # Finance RAG — Final Evaluation Report
 
 Branch: `eval/part-a-repair`
-Best config commit: `b5f9c2e` (v1.0 — Part B sufficiency grader, no ticker injection)
+Best config commit: `4cfad9d` (v1.0 — Part B sufficiency grader, no ticker injection)
 Report date: 2026-10-01
 
 ---
@@ -60,7 +60,7 @@ The only valid head-to-head comparison is **full-CRAG baseline** vs **Part B** o
 | Baseline (grader_node) | per-chunk ternary | 22 | 12 | 10 | 54.5% | 83.3% |
 | Part B (sufficiency_grader_node) | pooled one-call | 22 | 14 | 13 | **63.6%** | **92.9%** |
 
-Both measured at SHA e3d3e42/b630a6b, manual CRAG loop with ticker injection, holdout-22 (Q06-Q27).
+Both measured at SHA e3c1871/dc20780, manual CRAG loop with ticker injection, holdout-22 (Q06-Q27).
 
 **Holdout-22 numbers are tuning-contaminated** (Part B configuration was selected based on these results). They show direction of improvement but are not a held-out estimate.
 
@@ -128,7 +128,7 @@ Q20/Q21: generator receives context with confidence=medium but produces "I could
 
 5. **Holdout-22 contamination for Part B**: The Part B configuration (Cycle 1, PARTIAL→medium) was selected by observing holdout-22 results (retained over Cycle 2 based on these metrics). Holdout-22 numbers should not be treated as a held-out estimate of generalization.
 
-6. **FB27 baseline harness mismatch**: Baseline FB27 (94fdd2f) was measured via the LangGraph graph without ticker injection; Part B FB27 was projected from manual-loop runs with ticker injection. The two methodologies are not identical; both happen to produce 17/27 answered.
+6. **FB27 baseline harness mismatch**: Baseline FB27 (d4e92ea) was measured via the LangGraph graph without ticker injection; Part B FB27 was projected from manual-loop runs with ticker injection. The two methodologies are not identical; both happen to produce 17/27 answered.
 
 7. **Small eval sets**: All sets are n ≤ 50 and cover 5–7 companies (AAPL, MMM, BA, KO, NFLX, PFE). Performance on other sectors (energy, real estate, financials) is untested.
 
@@ -139,13 +139,13 @@ Q20/Q21: generator receives context with confidence=medium but produces "I could
 ## Phase A: FB27 Production Path (no ticker injection)
 
 File: `results/eval/fb27_no_injection_20261001_000652.json`
-Git: b5f9c2e | Cost: $0.9228 | Cache: 123H/17M
+Git: 4cfad9d | Cost: $0.9228 | Cache: 123H/17M
 
 **Ticker resolution: 27/27 correct** — GPT-4o decomposer correctly extracts ticker from all FB27 queries without injection. Production path is equivalent for ticker resolution.
 
 | Config | n | answered | correct | incorrect | abstained | coverage | prec@ans |
 |--------|---|----------|---------|-----------|-----------|----------|----------|
-| Injected Part B (b630a6b) | 27 | 17 | 15 | 2 | 10 | 62.96% | 88.2% |
+| Injected Part B (dc20780) | 27 | 17 | 15 | 2 | 10 | 62.96% | 88.2% |
 | **No-injection v1.0 (this)** | 27 | **16** | **15** | **1** | **11** | **59.3%** | **93.8%** |
 
 **Change**: Q26 PFE moved from answered-incorrect (injected) → abstained (hallucination guard caught wrong answer under no-injection). Correct count unchanged (15). This is an improvement in answer quality.
@@ -169,11 +169,11 @@ Git: b5f9c2e | Cost: $0.9228 | Cache: 123H/17M
 
 ## Phase C: Ragas Evaluation (v1.0 final config)
 
-Judge model: gpt-4o (ragas 0.2.15, SHA 8893b0a).
-Baseline = per-chunk-grader config (SHA 94fdd2f), same judge model.
+Judge model: gpt-4o (ragas 0.2.15, SHA be31255).
+Baseline = per-chunk-grader config (SHA d4e92ea), same judge model.
 Answered subsets only (abstentions excluded).
 
-| Metric | Baseline 94fdd2f | FB27 no-inj n=16 | AAPL50 n=42 |
+| Metric | Baseline d4e92ea | FB27 no-inj n=16 | AAPL50 n=42 |
 |--------|-----------------|-----------------|------------|
 | faithfulness | 0.834 | 0.797 | **0.900** |
 | context_precision | **0.856** | 0.746 | 0.758 |

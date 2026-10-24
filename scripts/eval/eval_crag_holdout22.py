@@ -5,7 +5,8 @@ Runs the complete CRAG pipeline (decompose → retrieve → rerank → expand_no
 question with the company ticker injected after decomposition (matching the
 approach in eval_part_a_consolidated.py).
 
-This is the "true current baseline" referenced in PROGRESS.md Step 1.
+This is the "true current baseline" referenced in Step 1 of
+docs/history/2026-10-01-eval-progress-log.md.
 
 Key design choices
 ------------------
@@ -51,9 +52,10 @@ from rich.console import Console
 from rich.table import Table
 
 from config.settings import get_settings
-from scripts.eval.eval_retrieval import (
+from src.utils.llm_client import get_llm_model
+from src.evaluation.eval_data import (
     CORPUS_TICKER_MAP,
-    _extract_evidence_entries,
+    extract_evidence_entries,
     load_in_corpus_financebench,
 )
 from src.evaluation.metrics import (
@@ -253,7 +255,7 @@ def main() -> None:
         ticker = CORPUS_TICKER_MAP[row["company"]]
         query = row["question"]
         gt = str(row["answer"])
-        ev_entries = _extract_evidence_entries(row)
+        ev_entries = extract_evidence_entries(row)
 
         console.print(f"  Q{q_num:02d} [{ticker}] {query[:60]}...")
 
@@ -347,7 +349,7 @@ def main() -> None:
         "dirty": dirty,
         "timestamp": ts,
         "config": {
-            "model": settings.openai_model,
+            "model": get_llm_model(),
             "reranker_model": settings.reranker_model,
             "embedding_model": settings.embedding_model,
             "qdrant_collection": settings.qdrant_collection,

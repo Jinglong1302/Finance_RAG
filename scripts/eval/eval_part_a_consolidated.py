@@ -39,9 +39,10 @@ from rich.console import Console
 from rich.table import Table
 
 from config.settings import get_settings
-from scripts.eval.eval_retrieval import (
+from src.utils.llm_client import chat_completion, get_llm_client, get_llm_model
+from src.evaluation.eval_data import (
     CORPUS_TICKER_MAP,
-    _extract_evidence_entries,
+    extract_evidence_entries,
     load_in_corpus_financebench,
 )
 from src.evaluation.metrics import (
@@ -86,7 +87,7 @@ def _call_generator(
         confidence=confidence, query=query, context=formatted
     )
     t0 = time.perf_counter()
-    resp = client.chat.completions.create(
+    resp, _ = chat_completion(
         model=model,
         messages=[
             {"role": "system", "content": GENERATION_SYSTEM_PROMPT},
@@ -230,7 +231,7 @@ def main() -> None:
     expander = ParentExpander(qdrant, settings.qdrant_collection)
     reranker = CrossEncoderReranker(model_name=settings.reranker_model)
     naive = NaiveRAG(qdrant, embedder, settings.qdrant_collection, top_k=10)
-    openai_client = OpenAI(api_key=settings.openai_api_key)
+    openai_client = get_llm_client()
     ret_node = make_retriever_node(searcher)
     rerank_node = make_reranker_node(reranker, expander)
     graph = build_crag_graph(
@@ -259,7 +260,7 @@ def main() -> None:
         gt = str(row["answer"])
         doc_period = row.get("doc_period")
         doc_name = row.get("doc_name", "")
-        ev_entries = _extract_evidence_entries(row)
+        ev_entries = extract_evidence_entries(row)
 
         console.print(f"  Q{q_num:02d} [{ticker}] {query[:55]}...")
 
@@ -291,7 +292,7 @@ def main() -> None:
         r_a["ticker"] = ticker
         abl_a_ret.append(r_a)
 
-        ans_a, lat_a = _call_generator(openai_client, settings.openai_model, query, rrf_ctx)
+        ans_a, lat_a = _call_generator(openai_client, get_llm_model(), query, rrf_ctx)
         g_a = _classify(ans_a, gt)
         g_a.update({"index": q_num, "ticker": ticker, "question": query,
                     "ground_truth": gt, "answer": ans_a, "latency_s": lat_a})
@@ -311,7 +312,7 @@ def main() -> None:
              "text": c.get("text", ""), "metadata": c.get("metadata", {})}
             for c in naive_chunks[:5]
         ]
-        ans_b, lat_b = _call_generator(openai_client, settings.openai_model, query, naive_ctx)
+        ans_b, lat_b = _call_generator(openai_client, get_llm_model(), query, naive_ctx)
         g_b = _classify(ans_b, gt)
         g_b.update({"index": q_num, "ticker": ticker, "question": query,
                     "ground_truth": gt, "answer": ans_b, "latency_s": lat_b})
@@ -344,7 +345,7 @@ def main() -> None:
         if not c_ctx:
             c_ctx = [{"child_text": "", "parent_text": None, "text": "", "metadata": {}}]
 
-        ans_c, lat_c = _call_generator(openai_client, settings.openai_model, query, c_ctx)
+        ans_c, lat_c = _call_generator(openai_client, get_llm_model(), query, c_ctx)
         g_c = _classify(ans_c, gt)
         g_c.update({"index": q_num, "ticker": ticker, "question": query,
                     "ground_truth": gt, "answer": ans_c, "latency_s": lat_c})
@@ -354,7 +355,7 @@ def main() -> None:
         # Oracle: gold context only -> generator
         # ----------------------------------------------------------------
         gold_ctx = _build_gold_ctx(ev_entries, ticker, doc_period, doc_name)
-        ans_o, lat_o = _call_generator(openai_client, settings.openai_model, query, gold_ctx, confidence="high")
+        ans_o, lat_o = _call_generator(openai_client, get_llm_model(), query, gold_ctx, confidence="high")
         g_o = _classify(ans_o, gt)
         g_o.update({"index": q_num, "ticker": ticker, "question": query,
                     "ground_truth": gt, "answer": ans_o, "latency_s": lat_o})
@@ -378,7 +379,7 @@ def main() -> None:
         ticker = CORPUS_TICKER_MAP[row["company"]]
         query = row["question"]
         gt = str(row["answer"])
-        ev_entries = _extract_evidence_entries(row)
+        ev_entries = extract_evidence_entries(row)
 
         console.print(f"  Dev Q{q_num:02d} [{ticker}] {query[:55]}...")
         t0 = time.perf_counter()
@@ -458,7 +459,7 @@ def main() -> None:
         "dirty": dirty,
         "timestamp": ts,
         "config": {
-            "model": settings.openai_model,
+            "model": get_llm_model(),
             "reranker_model": settings.reranker_model,
             "embedding_model": settings.embedding_model,
             "qdrant_collection": settings.qdrant_collection,

@@ -6,6 +6,7 @@ and cost estimates are accurate.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 import tiktoken
@@ -15,8 +16,12 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Pricing table (USD per token).  Update here when OpenAI reprices models.
-# Cached input tokens are billed at 50% of the standard input rate.
+# Pricing table (USD per token).  Update here when a provider reprices models.
+# OpenAI: cached input tokens are billed at 50% of the standard input rate.
+# Gemini: paid-tier list prices; the free tier costs $0. The OpenAI-compatible
+# endpoint does not report cached tokens, so no cache discount is applied.
+# Gemini prices were taken from third-party price trackers on 2026-10-23
+# (Google's own page was not reachable); check ai.google.dev before relying on them.
 # ---------------------------------------------------------------------------
 _PRICING: dict[str, dict[str, float]] = {
     "gpt-4o": {
@@ -29,7 +34,20 @@ _PRICING: dict[str, dict[str, float]] = {
         "input_cached":  0.075 / 1_000_000,
         "output":        0.600 / 1_000_000,
     },
+    "gemini-2.5-flash": {
+        "input":         0.30 / 1_000_000,
+        "input_cached":  0.30 / 1_000_000,
+        "output":        2.50 / 1_000_000,
+    },
+    "gemini-3.5-flash": {
+        "input":         1.50 / 1_000_000,
+        "input_cached":  1.50 / 1_000_000,
+        "output":        9.00 / 1_000_000,
+    },
 }
+
+# Models already warned about, so the log is not flooded on every call
+_UNPRICED_WARNED: set[str] = set()
 
 
 # Cache the encoder instance for performance
@@ -109,7 +127,14 @@ def estimate_cost(
     Returns:
         Estimated cost in USD.
     """
-    rates = _PRICING.get(model, _PRICING["gpt-4o"])
+    rates = _PRICING.get(model)
+    if rates is None:
+        if model not in _UNPRICED_WARNED:
+            _UNPRICED_WARNED.add(model)
+            logging.getLogger(__name__).warning(
+                "No price for model %r in src/utils/tokens.py; costing it as gpt-4o", model
+            )
+        rates = _PRICING["gpt-4o"]
     non_cached = input_tokens - cached_tokens
     return (
         non_cached      * rates["input"]

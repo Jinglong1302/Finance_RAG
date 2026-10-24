@@ -31,7 +31,8 @@ from rich.console import Console
 from rich.table import Table
 
 from config.settings import get_settings
-from scripts.eval.eval_generation_financebench import _load_custom_eval
+from src.utils.llm_client import get_llm_model
+from src.evaluation.eval_data import load_custom_eval
 from src.evaluation.numeric_eval import numeric_match
 from src.evaluation.ragas_eval import _is_refusal
 from src.evaluation.metrics import span_match
@@ -138,7 +139,7 @@ def main() -> None:
     rerank_node = make_reranker_node(reranker, expander)
     note_expander_fn = make_note_expander_node(qdrant, settings.qdrant_collection)
 
-    samples = _load_custom_eval()[:50]
+    samples = load_custom_eval()[:50]
     assert len(samples) == 50, f"Expected 50 AAPL samples, got {len(samples)}"
 
     console.print(f"\n[yellow]Running Part B CRAG on {len(samples)} AAPL questions...[/yellow]")
@@ -227,7 +228,7 @@ def main() -> None:
         "dirty": dirty,
         "timestamp": ts,
         "config": {
-            "model": settings.openai_model,
+            "model": get_llm_model(),
             "reranker_model": settings.reranker_model,
             "grader": "sufficiency_grader_node",
         },

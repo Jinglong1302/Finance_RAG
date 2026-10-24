@@ -59,7 +59,7 @@ def find_latest_summaries(eval_dir: Path) -> tuple[Path | None, Path | None]:
 
 
 def main() -> None:
-    root = Path(__file__).parent.parent.parent
+    root = Path(__file__).parents[3]
     eval_dir = root / "results" / "eval"
 
     parser = argparse.ArgumentParser(description="Generate 3-way evaluation comparative report")

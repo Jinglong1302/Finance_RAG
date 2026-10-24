@@ -26,7 +26,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parents[3]))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -74,7 +74,7 @@ def _run_slice(script: str, limit: int | None, extra_args: list[str]) -> bool:
         cmd += ["--limit", str(limit)]
     cmd += extra_args
     console.print(f"\n[bold yellow]→ Running: {' '.join(cmd)}[/bold yellow]")
-    result = subprocess.run(cmd, cwd=str(Path(__file__).parent.parent.parent))
+    result = subprocess.run(cmd, cwd=str(Path(__file__).parents[3]))
     return result.returncode == 0
 
 
@@ -588,7 +588,7 @@ def _render_markdown(summary: dict, gates: dict[str, bool], ts: str) -> str:
         "",
         "---",
         "",
-        "> *Evaluation Architecture & Methodology:* see `docs/CHUNKING_ANALYSIS_REPORT.md` and `docs/EVALUATION_50_QA_GUIDE.md`.  ",
+        "> *Evaluation Architecture & Methodology:* see `docs/history/2026-09-25-chunking-analysis.md` and `docs/guides/aapl50-benchmark.md`.  ",
         "> Re-run with `poetry run python scripts/eval/run_all_evals.py` to refresh all slices.",
     ]
 

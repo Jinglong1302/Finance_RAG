@@ -10,14 +10,13 @@ import json
 import time
 from typing import Any
 
-from openai import OpenAI
-
 from src.orchestration.prompts.decomposition import (
     DECOMPOSITION_SYSTEM_PROMPT,
     DECOMPOSITION_USER_PROMPT,
 )
 from src.orchestration.state import CRAGState
 from src.retrieval.query_expansion import expand_financial_query
+from src.utils.llm_client import chat_completion
 from src.utils.logging import get_logger
 from src.utils.tokens import cost_from_usage
 
@@ -44,11 +43,9 @@ def query_decomposer_node(state: CRAGState) -> dict[str, Any]:
         return {"error": "No query provided"}
 
     start_t = time.perf_counter()
-    client = OpenAI()
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
+        response, model = chat_completion(
             messages=[
                 {"role": "system", "content": DECOMPOSITION_SYSTEM_PROMPT},
                 {
@@ -65,7 +62,7 @@ def query_decomposer_node(state: CRAGState) -> dict[str, Any]:
         result = json.loads(result_text)
 
         # Track cost (using actual usage including cache discount)
-        cost, token_detail = cost_from_usage(response.usage, "gpt-4o")
+        cost, token_detail = cost_from_usage(response.usage, model)
 
         # Extract and validate fields
         raw_sub_queries = result.get("sub_queries", [query])
@@ -91,7 +88,7 @@ def query_decomposer_node(state: CRAGState) -> dict[str, Any]:
 
         trace = {
             "node": "query_decomposer",
-            "model": "gpt-4o",
+            "model": model,
             "prompt_tokens": token_detail["prompt_tokens"],
             "cached_tokens": token_detail["cached_tokens"],
             "completion_tokens": token_detail["completion_tokens"],

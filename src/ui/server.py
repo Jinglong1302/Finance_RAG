@@ -17,6 +17,7 @@ from aiohttp.typedefs import Handler
 from qdrant_client import QdrantClient
 
 from config.settings import get_settings
+from src.utils.llm_client import get_llm_model
 from src.utils.reporter import DEFAULT_REPORTS_DIR, list_reports, save_query_report
 from src.embedding.embedder import BGEEmbedder
 from src.orchestration.graph import build_crag_graph, run_query
@@ -80,7 +81,7 @@ def create_app() -> web.Application:
         """Health check endpoint."""
         return web.json_response({
             "status": "online",
-            "model": settings.openai_model,
+            "model": get_llm_model(),
             "qdrant_url": settings.qdrant_url,
             "collection": settings.qdrant_collection,
             "pipeline_ready": app["graph"] is not None,
@@ -118,11 +119,13 @@ def create_app() -> web.Application:
         import src.orchestration.nodes.query_rewriter
         import src.orchestration.nodes.reranker_node
         import src.orchestration.nodes.retriever
+        import src.orchestration.nodes.sufficiency_grader
 
         for mod in [
             src.orchestration.nodes.retriever,
             src.orchestration.nodes.reranker_node,
             src.orchestration.nodes.grader,
+            src.orchestration.nodes.sufficiency_grader,
             src.orchestration.nodes.generator,
             src.orchestration.nodes.hallucination_guard,
             src.orchestration.nodes.query_decomposer,

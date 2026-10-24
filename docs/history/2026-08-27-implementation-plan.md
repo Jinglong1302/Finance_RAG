@@ -1,8 +1,10 @@
 # Finance RAG — Implementation Plan
 
+> **Historical record from 2026-08-27.** Kept as written at the time; file names, numbers and plans may no longer match the code. For current docs start at [docs/README.md](../README.md).
+
 ## Goal
 
-Build an enterprise-grade financial intelligence engine that queries SEC 10-K/10-Q filings using Corrective RAG (CRAG), hybrid dense-sparse search, cross-encoder reranking, and automated LLM-as-a-judge evaluation. All decisions follow the approved [first_principles_analysis.md](file:///C:/Users/Hong/.gemini/antigravity-ide/brain/2eb37f5d-db5d-4f18-a3e2-f3f40ecce705/first_principles_analysis.md).
+Build an enterprise-grade financial intelligence engine that queries SEC 10-K/10-Q filings using Corrective RAG (CRAG), hybrid dense-sparse search, cross-encoder reranking, and automated LLM-as-a-judge evaluation. All decisions follow the approved [first_principles_analysis.md](2026-08-27-first-principles-analysis.md).
 
 ---
 
@@ -124,7 +126,7 @@ c:\Project\Finance_RAG\
 
 ---
 
-#### [NEW] [pyproject.toml](file:///c:/Project/Finance_RAG/pyproject.toml)
+#### [NEW] [pyproject.toml](../../pyproject.toml)
 
 Poetry project configuration with all dependencies pinned to compatible ranges. Dependency groups: `main`, `dev`, `notebook`.
 
@@ -197,7 +199,7 @@ strict = true
 
 ---
 
-#### [NEW] [docker-compose.yml](file:///c:/Project/Finance_RAG/docker-compose.yml)
+#### [NEW] [docker-compose.yml](../../docker-compose.yml)
 
 Local Qdrant instance for development.
 
@@ -217,7 +219,7 @@ services:
 
 ---
 
-#### [NEW] [config/settings.py](file:///c:/Project/Finance_RAG/config/settings.py)
+#### [NEW] [config/settings.py](../../config/settings.py)
 
 Centralized configuration using Pydantic Settings, loaded from `.env`.
 
@@ -278,7 +280,7 @@ settings = Settings()
 
 ---
 
-#### [NEW] [src/ingestion/downloader.py](file:///c:/Project/Finance_RAG/src/ingestion/downloader.py)
+#### [NEW] [src/ingestion/downloader.py](../../src/ingestion/downloader.py)
 
 Downloads 10-K filings from SEC EDGAR for specified tickers and fiscal years.
 
@@ -307,7 +309,7 @@ class SECDownloader:
 
 ---
 
-#### [NEW] [src/ingestion/html_parser.py](file:///c:/Project/Finance_RAG/src/ingestion/html_parser.py)
+#### [NEW] [src/ingestion/html_parser.py](../../src/ingestion/html_parser.py)
 
 Parses raw SEC filing HTML, strips XBRL wrapper tags while preserving inner text, and produces a clean HTML DOM.
 
@@ -334,7 +336,7 @@ class HTMLParser:
 
 ---
 
-#### [NEW] [src/ingestion/xbrl_extractor.py](file:///c:/Project/Finance_RAG/src/ingestion/xbrl_extractor.py)
+#### [NEW] [src/ingestion/xbrl_extractor.py](../../src/ingestion/xbrl_extractor.py)
 
 Extracts whitelisted US-GAAP XBRL concepts from filing HTML before stripping.
 
@@ -361,7 +363,7 @@ class XBRLExtractor:
 
 ---
 
-#### [NEW] [src/ingestion/table_extractor.py](file:///c:/Project/Finance_RAG/src/ingestion/table_extractor.py)
+#### [NEW] [src/ingestion/table_extractor.py](../../src/ingestion/table_extractor.py)
 
 Detects, merges multi-page tables, and converts them to Markdown or semantic-stripped HTML.
 
@@ -398,7 +400,7 @@ class TableExtractor:
 
 ---
 
-#### [NEW] [src/ingestion/section_splitter.py](file:///c:/Project/Finance_RAG/src/ingestion/section_splitter.py)
+#### [NEW] [src/ingestion/section_splitter.py](../../src/ingestion/section_splitter.py)
 
 Splits a cleaned 10-K filing into SEC-mandated sections (Item 1 through Item 15).
 
@@ -439,7 +441,7 @@ class SectionSplitter:
 
 ---
 
-#### [NEW] [src/chunking/metadata.py](file:///c:/Project/Finance_RAG/src/chunking/metadata.py)
+#### [NEW] [src/chunking/metadata.py](../../src/chunking/metadata.py)
 
 Pydantic models for chunk metadata — the data contract between ingestion and retrieval.
 
@@ -472,7 +474,7 @@ class ChunkMetadata(BaseModel):
 
 ---
 
-#### [NEW] [src/chunking/prose_chunker.py](file:///c:/Project/Finance_RAG/src/chunking/prose_chunker.py)
+#### [NEW] [src/chunking/prose_chunker.py](../../src/chunking/prose_chunker.py)
 
 Chunks prose sections (MD&A, Risk Factors, Business) into ~512-token segments.
 
@@ -499,7 +501,7 @@ class ProseChunker:
 
 ---
 
-#### [NEW] [src/chunking/table_chunker.py](file:///c:/Project/Finance_RAG/src/chunking/table_chunker.py)
+#### [NEW] [src/chunking/table_chunker.py](../../src/chunking/table_chunker.py)
 
 Chunks tables as atomic units with parent-child hierarchy and header injection.
 
@@ -520,7 +522,7 @@ class TableChunker:
 
 ---
 
-#### [NEW] [src/chunking/note_chunker.py](file:///c:/Project/Finance_RAG/src/chunking/note_chunker.py)
+#### [NEW] [src/chunking/note_chunker.py](../../src/chunking/note_chunker.py)
 
 Extracts and chunks individual footnotes from Item 8 Notes section.
 
@@ -532,7 +534,7 @@ Extracts and chunks individual footnotes from Item 8 Notes section.
 
 ---
 
-#### [NEW] [src/chunking/chunker.py](file:///c:/Project/Finance_RAG/src/chunking/chunker.py)
+#### [NEW] [src/chunking/chunker.py](../../src/chunking/chunker.py)
 
 Orchestrator that routes each section to the appropriate chunker.
 
@@ -559,7 +561,7 @@ class ChunkingPipeline:
 
 ---
 
-#### [NEW] [src/embedding/embedder.py](file:///c:/Project/Finance_RAG/src/embedding/embedder.py)
+#### [NEW] [src/embedding/embedder.py](../../src/embedding/embedder.py)
 
 Generates dense (1024-dim) and sparse (lexical weight) embeddings using BGE-M3.
 
@@ -587,7 +589,7 @@ class BGEEmbedder:
 
 ---
 
-#### [NEW] [src/embedding/indexer.py](file:///c:/Project/Finance_RAG/src/embedding/indexer.py)
+#### [NEW] [src/embedding/indexer.py](../../src/embedding/indexer.py)
 
 Creates the Qdrant hybrid collection and upserts embedded chunks.
 
@@ -618,7 +620,7 @@ class QdrantIndexer:
 
 ---
 
-#### [NEW] [src/retrieval/hybrid_search.py](file:///c:/Project/Finance_RAG/src/retrieval/hybrid_search.py)
+#### [NEW] [src/retrieval/hybrid_search.py](../../src/retrieval/hybrid_search.py)
 
 Performs hybrid dense+sparse search on Qdrant with pre-filtering and RRF fusion.
 
@@ -653,7 +655,7 @@ class HybridSearcher:
 
 ---
 
-#### [NEW] [src/retrieval/reranker.py](file:///c:/Project/Finance_RAG/src/retrieval/reranker.py)
+#### [NEW] [src/retrieval/reranker.py](../../src/retrieval/reranker.py)
 
 Cross-encoder reranking using BGE-reranker-large.
 
@@ -675,7 +677,7 @@ class CrossEncoderReranker:
 
 ---
 
-#### [NEW] [src/retrieval/parent_expander.py](file:///c:/Project/Finance_RAG/src/retrieval/parent_expander.py)
+#### [NEW] [src/retrieval/parent_expander.py](../../src/retrieval/parent_expander.py)
 
 Expands child chunks to their parent context for richer generation input.
 
@@ -707,7 +709,7 @@ class ParentExpander:
 
 ---
 
-#### [NEW] [src/orchestration/state.py](file:///c:/Project/Finance_RAG/src/orchestration/state.py)
+#### [NEW] [src/orchestration/state.py](../../src/orchestration/state.py)
 
 LangGraph state definition — the data contract flowing through all nodes.
 
@@ -751,7 +753,7 @@ class CRAGState(TypedDict):
 
 ---
 
-#### [NEW] [src/orchestration/graph.py](file:///c:/Project/Finance_RAG/src/orchestration/graph.py)
+#### [NEW] [src/orchestration/graph.py](../../src/orchestration/graph.py)
 
 LangGraph StateGraph assembly — wires all nodes with conditional routing.
 
@@ -833,7 +835,7 @@ def build_crag_graph(
 
 ---
 
-#### [NEW] [src/orchestration/nodes/query_decomposer.py](file:///c:/Project/Finance_RAG/src/orchestration/nodes/query_decomposer.py)
+#### [NEW] [src/orchestration/nodes/query_decomposer.py](../../src/orchestration/nodes/query_decomposer.py)
 
 Decomposes complex queries into sub-queries and extracts structured metadata filters.
 
@@ -863,7 +865,7 @@ NOT:
 
 ---
 
-#### [NEW] [src/orchestration/nodes/grader.py](file:///c:/Project/Finance_RAG/src/orchestration/nodes/grader.py)
+#### [NEW] [src/orchestration/nodes/grader.py](../../src/orchestration/nodes/grader.py)
 
 CRAG document relevance grader — ternary grading in a single batch call.
 
@@ -881,7 +883,7 @@ CRAG document relevance grader — ternary grading in a single batch call.
 
 ---
 
-#### [NEW] [src/orchestration/nodes/generator.py](file:///c:/Project/Finance_RAG/src/orchestration/nodes/generator.py)
+#### [NEW] [src/orchestration/nodes/generator.py](../../src/orchestration/nodes/generator.py)
 
 Grounded answer generation with citations and optional structured metrics.
 
@@ -901,7 +903,7 @@ Grounded answer generation with citations and optional structured metrics.
 
 ---
 
-#### [NEW] [src/orchestration/nodes/hallucination_guard.py](file:///c:/Project/Finance_RAG/src/orchestration/nodes/hallucination_guard.py)
+#### [NEW] [src/orchestration/nodes/hallucination_guard.py](../../src/orchestration/nodes/hallucination_guard.py)
 
 Post-generation faithfulness verification.
 
@@ -913,7 +915,7 @@ Post-generation faithfulness verification.
 
 ---
 
-#### [NEW] [src/orchestration/nodes/calculator.py](file:///c:/Project/Finance_RAG/src/orchestration/nodes/calculator.py)
+#### [NEW] [src/orchestration/nodes/calculator.py](../../src/orchestration/nodes/calculator.py)
 
 Python REPL tool for numerical reasoning.
 
@@ -925,7 +927,7 @@ Python REPL tool for numerical reasoning.
 
 ---
 
-#### [NEW] [src/orchestration/nodes/note_expander.py](file:///c:/Project/Finance_RAG/src/orchestration/nodes/note_expander.py)
+#### [NEW] [src/orchestration/nodes/note_expander.py](../../src/orchestration/nodes/note_expander.py)
 
 Conditional footnote expansion — fetches referenced Notes from Qdrant.
 
@@ -949,7 +951,7 @@ Conditional footnote expansion — fetches referenced Notes from Qdrant.
 
 ---
 
-#### [NEW] [src/evaluation/benchmarks.py](file:///c:/Project/Finance_RAG/src/evaluation/benchmarks.py)
+#### [NEW] [src/evaluation/benchmarks.py](../../src/evaluation/benchmarks.py)
 
 Dataset loaders for FinanceBench and TAT-QA.
 
@@ -960,7 +962,7 @@ Dataset loaders for FinanceBench and TAT-QA.
 
 ---
 
-#### [NEW] [src/evaluation/ragas_eval.py](file:///c:/Project/Finance_RAG/src/evaluation/ragas_eval.py)
+#### [NEW] [src/evaluation/ragas_eval.py](../../src/evaluation/ragas_eval.py)
 
 Ragas metric runner with cost tracking.
 
@@ -972,7 +974,7 @@ Ragas metric runner with cost tracking.
 
 ---
 
-#### [NEW] [src/evaluation/numeric_eval.py](file:///c:/Project/Finance_RAG/src/evaluation/numeric_eval.py)
+#### [NEW] [src/evaluation/numeric_eval.py](../../src/evaluation/numeric_eval.py)
 
 Deterministic numerical matching for TAT-QA (bypasses LLM judge for numbers).
 
@@ -988,7 +990,7 @@ def numeric_match(predicted: str, expected: str, tolerance: float = 0.01) -> boo
 
 ---
 
-#### [NEW] [src/evaluation/cost_tracker.py](file:///c:/Project/Finance_RAG/src/evaluation/cost_tracker.py)
+#### [NEW] [src/evaluation/cost_tracker.py](../../src/evaluation/cost_tracker.py)
 
 Per-query and per-run cost tracking for OpenAI API usage.
 
@@ -1002,7 +1004,7 @@ Per-query and per-run cost tracking for OpenAI API usage.
 
 ### CLI Scripts
 
-#### [NEW] [scripts/ingest.py](file:///c:/Project/Finance_RAG/scripts/ingest.py)
+#### [NEW] [scripts/ingest.py](../../scripts/ingest.py)
 
 End-to-end ingestion CLI: download → parse → chunk → embed → index.
 
@@ -1010,7 +1012,7 @@ End-to-end ingestion CLI: download → parse → chunk → embed → index.
 python scripts/ingest.py --tickers AAPL MSFT NVDA AMZN --filing-type 10-K --limit 3
 ```
 
-#### [NEW] [scripts/query.py](file:///c:/Project/Finance_RAG/scripts/query.py)
+#### [NEW] [scripts/query.py](../../scripts/query.py)
 
 Interactive query interface with rich terminal output.
 
@@ -1018,7 +1020,7 @@ Interactive query interface with rich terminal output.
 python scripts/query.py "What was Apple's total revenue in FY2024?"
 ```
 
-#### [NEW] [scripts/evaluate.py](file:///c:/Project/Finance_RAG/scripts/evaluate.py)
+#### [NEW] [scripts/evaluate.py](../../scripts/evaluate.py)
 
 Run evaluation suite against FinanceBench and TAT-QA.
 

@@ -112,7 +112,6 @@ def main() -> None:
         qdrant_client=qdrant,
         embedder=embedder,
         collection_name=settings.qdrant_collection,
-        openai_model=settings.openai_model,
         top_k=args.top_k,
     )
     console.print("[bold green]✓ Naive RAG initialized (dense-only, no reranker, no decomposition, one-shot)[/bold green]\n")

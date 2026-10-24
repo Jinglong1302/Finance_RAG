@@ -1,5 +1,7 @@
 # Finance RAG — First-Principles Analysis & Critical Design Questions
 
+> **Historical record from 2026-08-27.** Kept as written at the time; file names, numbers and plans may no longer match the code. For current docs start at [docs/README.md](../README.md).
+
 ## Executive Summary
 
 This analysis deconstructs the proposed system into its atomic assumptions and surfaces **34 critical questions** across 8 design dimensions. The goal is to resolve ambiguity *before* writing code — where the cost of change is lowest.

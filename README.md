@@ -8,9 +8,10 @@ Enterprise-grade financial intelligence engine for querying SEC 10-K/10-Q filing
 - **Hybrid Search** — BGE-M3 dense + sparse (lexical-weight) embeddings with RRF fusion
 - **Cross-Encoder Reranking** — BAAI/bge-reranker-base (overridable via `RERANKER_MODEL` env var)
 - **Corrective RAG (CRAG)** — LangGraph state machine with ≤2 rewrite cycles and explicit refusal
-- **Pooled-Context Sufficiency Grading** — Single GPT-4o call on concatenated top-k context (Part B)
+- **Pooled-Context Sufficiency Grading** — Single LLM call on concatenated top-k context (Part B)
 - **Parent-Child Chunk Hierarchy** — Retrieval on child chunks; parent text injected for context
-- **Hallucination Guard** — Post-generation GPT-4o faithfulness check; triggers rewrite on fail
+- **Hallucination Guard** — Post-generation LLM faithfulness check; triggers rewrite on fail
+- **Switchable AI provider** — Gemini (default) or OpenAI, chosen in `.env`
 - **Citation Mapping** — Structured citation objects with company/section/year metadata per answer
 
 ## Quick Start
@@ -20,7 +21,7 @@ Enterprise-grade financial intelligence engine for querying SEC 10-K/10-Q filing
 - Python 3.11+
 - [Poetry](https://python-poetry.org/docs/#installation)
 - [Docker](https://docs.docker.com/get-docker/) (for local Qdrant)
-- OpenAI API key
+- A Gemini API key (default) or an OpenAI API key — see [Choosing the AI provider](#choosing-the-ai-provider)
 
 ### Setup
 
@@ -31,7 +32,7 @@ poetry install
 
 # Copy and configure environment
 cp .env.example .env
-# Edit .env with your OpenAI API key and email
+# Edit .env with your Gemini (or OpenAI) API key and email
 
 # Start Qdrant
 docker compose up -d
@@ -60,7 +61,7 @@ poetry run python scripts/query.py "What was Apple's total revenue in FY2024?"
 
 ### Reproduce Evaluations
 
-All eval scripts require Qdrant running and `OPENAI_API_KEY` set. Enable LLM disk cache to avoid re-spending on reruns (temp=0, seed=42 — deterministic).
+All eval scripts require Qdrant running and the key for your `LLM_PROVIDER` set. Enable LLM disk cache to avoid re-spending on reruns (temp=0; seed=42 on OpenAI — Gemini does not accept a seed).
 
 ```bash
 # Part A ablations (retrieval + generation baselines, no grader)
@@ -80,30 +81,45 @@ python scripts/eval/eval_part_b_aapl50.py
 python scripts/eval/eval_fullscale_baselines.py
 ```
 
-Results are saved to `results/eval/` (gitignored except `results/FINAL.md`; progress log at `docs/PROGRESS.md`).
+Results are saved to `results/eval/` (gitignored except `results/FINAL.md`; past progress log at `docs/history/2026-10-01-eval-progress-log.md`).
 LLM cache stored in `results/llm_cache/` (gitignored). Estimated costs: see `results/FINAL.md`.
 
 ## Architecture
 
 ```
-User Query → Query Decomposition (GPT-4o)
+User Query → Query Decomposition (LLM)
            → Hybrid Search (Qdrant: BGE-M3 dense + sparse, RRF)
            → Cross-Encoder Reranking (bge-reranker-base, top-5)
            → Parent Expansion (child retrieval → parent context injection)
-           → Pooled Sufficiency Grading (GPT-4o, 1 call on concatenated top-k)
-           → [SUFFICIENT/PARTIAL] → Generation with Citations (GPT-4o)
-                                  → Hallucination Guard (GPT-4o)
+           → Pooled Sufficiency Grading (LLM, 1 call on concatenated top-k)
+           → [SUFFICIENT/PARTIAL] → Generation with Citations (LLM)
+                                  → Hallucination Guard (LLM)
            → [INSUFFICIENT, cycles < 2] → Query Rewrite → Re-retrieve
            → [INSUFFICIENT, cycles = 2] → Explicit Refusal
 ```
 
 **Current index**: MMM, BA, KO, NFLX, PFE, AAPL — 10-K filings — 6,971 Qdrant points
 
-**Company and fiscal-year resolution (production)**: `query_decomposer_node` calls GPT-4o with the decomposition prompt; the model extracts `company_ticker` and `fiscal_year` from the query text alone — no fallback injection occurs. The Part B FB27 eval (SHA b630a6b) injected the ticker after decompose; that is NOT the production path.
+**Company and fiscal-year resolution (production)**: `query_decomposer_node` calls the LLM with the decomposition prompt; the model extracts `company_ticker` and `fiscal_year` from the query text alone — no fallback injection occurs. The Part B FB27 eval (SHA dc20780) injected the ticker after decompose; that is NOT the production path.
+
+### Choosing the AI provider
+
+Every pipeline step (decompose, grade, generate, guard, rewrite) and the Ragas judge use one provider, set in `.env`:
+
+```bash
+LLM_PROVIDER=gemini        # or: openai
+GEMINI_API_KEY=...         # when LLM_PROVIDER=gemini
+OPENAI_API_KEY=...         # when LLM_PROVIDER=openai
+LLM_MODEL=                 # blank = gemini-2.5-flash (gemini) or OPENAI_MODEL (openai)
+```
+
+Gemini is called through its OpenAI-compatible endpoint with the `openai` package already installed, so nothing extra needs installing. The provider code lives in `src/utils/llm_client.py`; all options are listed in `.env.example`. On a free-tier Gemini key, Pro models have no quota and Flash models are rate-limited, so evals run slowly (calls retry on HTTP 429).
 
 ## Evaluation Results
 
-Final config: v1.0 (SHA b5f9c2e) — Part B pooled-context sufficiency grader, production path (no ticker injection).
+> The numbers below were measured with **OpenAI GPT-4o** and, per the 2026-10-23 engineering review, before the cross-encoder reranker was actually being called. They have not yet been re-measured with Gemini or with the reranker fix.
+
+Final config: v1.0 (SHA 4cfad9d) — Part B pooled-context sufficiency grader, production path (no ticker injection).
 Methodology: LLM disk cache (temp=0, seed=42).
 
 ### Held-Out Benchmarks (clean, grader never saw these)
@@ -120,9 +136,9 @@ Methodology: LLM disk cache (temp=0, seed=42).
 
 | Config | n | answered | correct | coverage | prec@ans |
 |--------|---|----------|---------|----------|----------|
-| Baseline (per-chunk grader, SHA 94fdd2f) | 27 | 17 | 13 | 62.96% | 76.5% |
-| Part B (pooled sufficiency, SHA b630a6b) | 27 | 17 | 15 | 62.96% | **88.2%** |
-| **Production / no-injection (b5f9c2e)** | **27** | **16** | **15** | **59.3% (16/27)** | **93.8%** |
+| Baseline (per-chunk grader, SHA d4e92ea) | 27 | 17 | 13 | 62.96% | 76.5% |
+| Part B (pooled sufficiency, SHA dc20780) | 27 | 17 | 15 | 62.96% | **88.2%** |
+| **Production / no-injection (4cfad9d)** | **27** | **16** | **15** | **59.3% (16/27)** | **93.8%** |
 
 The production path row (no ticker injection) is the canonical v1.0 result. Coverage drops −3.7pp vs the injected run because Q26 PFE is now correctly rejected by the hallucination guard; correct count is unchanged (15).
 
@@ -148,27 +164,27 @@ These numbers are contaminated (used for config selection). Treat as directional
 
 ### FB27 Production Path (no ticker injection, v1.0)
 
-The previously reported FB27 Part B numbers (SHA b630a6b) used ticker injection after decompose. The true production path relies on GPT-4o to extract the ticker from the query text.
+The previously reported FB27 Part B numbers (SHA dc20780) used ticker injection after decompose. The true production path relies on GPT-4o to extract the ticker from the query text.
 
 | Config | n | answered | correct | coverage | prec@ans |
 |--------|---|----------|---------|----------|----------|
-| Injected (b630a6b, non-production) | 27 | 17 | 15 | 62.96% | 88.2% |
-| **Production / no-injection (b5f9c2e)** | **27** | **16** | **15** | **59.3%** | **93.8%** |
+| Injected (dc20780, non-production) | 27 | 17 | 15 | 62.96% | 88.2% |
+| **Production / no-injection (4cfad9d)** | **27** | **16** | **15** | **59.3%** | **93.8%** |
 
 Ticker resolution: 27/27 correct on production path. The coverage drop (−3.7pp) is entirely from one question (Q26 PFE) that the hallucination guard now correctly rejects instead of returning a wrong answer.
 
-### Ragas Metrics (v1.0 final config, SHA 8893b0a)
+### Ragas Metrics (v1.0 final config, SHA be31255)
 
-Judge model: gpt-4o (ragas 0.2.15). Answered subsets only (abstentions excluded).
+Judge model: the eval scripts did not set one, so Ragas 0.2.15 used its default, gpt-4o-mini (found in the 2026-10-23 review; the scripts now pass the configured judge). Answered subsets only (abstentions excluded).
 
-| Metric | Baseline† (94fdd2f) | FB27 no-inj (n=16) | AAPL50 (n=42) |
+| Metric | Baseline† (d4e92ea) | FB27 no-inj (n=16) | AAPL50 (n=42) |
 |--------|--------------------|--------------------|---------------|
 | faithfulness | 0.834 | 0.797 | **0.900** |
 | context_precision | **0.856** | 0.746 | 0.758 |
 | answer_relevancy | **0.892** | 0.880 | **0.987** |
 | context_recall | 0.324 | 0.344 | **0.956** |
 
-† Baseline = per-chunk-grader config (SHA 94fdd2f), same judge model.
+† Baseline = per-chunk-grader config (SHA d4e92ea), same judge model.
 
 ### Key Limitations
 
@@ -196,18 +212,28 @@ a full table.
 ## Project Structure
 
 ```
-├── config/          # Pydantic Settings configuration
+├── CLAUDE.md        # Short index and house rules (start here when changing code)
+├── config/          # Pydantic Settings configuration (reads .env)
 ├── src/
 │   ├── ingestion/   # SEC EDGAR download, HTML parsing, table extraction
 │   ├── chunking/    # Section-based chunking with parent-child hierarchy
 │   ├── embedding/   # BGE-M3 dense+sparse, Qdrant indexing
 │   ├── retrieval/   # Hybrid search, reranking, parent expansion
-│   ├── orchestration/  # LangGraph CRAG state machine
-│   └── evaluation/  # Ragas metrics, benchmarks, cost tracking
-├── scripts/         # CLI entry points
-├── notebooks/       # Exploration and analysis
-└── tests/           # Unit and integration tests
+│   ├── orchestration/  # LangGraph CRAG graph, pipeline steps, prompts
+│   ├── evaluation/  # Ragas metrics, benchmarks, eval data loaders and helpers
+│   ├── ui/          # Local web dashboard (aiohttp + static files)
+│   └── utils/       # LLM client, disk cache, stub LLM, tokens, logging
+├── scripts/         # CLI entry points (query, ingest, serve)
+│   └── eval/        # Evaluation runners (retired ones in eval/archive/)
+├── tests/           # Offline unit tests
+├── data/eval/       # Eval question sets (licences in data/README.md)
+├── results/         # Eval output (gitignored except FINAL.md, README.md, archive/INDEX.md)
+└── docs/            # Guides, engineering review, history — map in docs/README.md
 ```
+
+## Documentation
+
+Start at [`docs/README.md`](docs/README.md). It lists every guide, the engineering review and baseline, and the dated history docs.
 
 **Note on unused utilities**: `src/orchestration/nodes/calculator.py` is a sandboxed Python REPL
 utility for financial calculations (CAGR, margins, growth rates). It is not currently imported by

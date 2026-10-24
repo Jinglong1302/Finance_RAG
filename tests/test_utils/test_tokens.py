@@ -58,6 +58,10 @@ class TestEstimateCost:
         cost = estimate_cost(0, 0, "gpt-4o")
         assert cost == 0.0
 
+    def test_gemini_flash_cost(self) -> None:
+        cost = estimate_cost(1_000_000, 1_000_000, "gemini-2.5-flash")
+        assert abs(cost - (0.30 + 2.50)) < 1e-9
+
     def test_unknown_model_defaults_to_gpt4o(self) -> None:
         cost = estimate_cost(1000, 500, "some-future-model")
         expected = estimate_cost(1000, 500, "gpt-4o")

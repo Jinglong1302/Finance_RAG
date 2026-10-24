@@ -1,7 +1,7 @@
 # 🎯 50 Retrieval Evaluation QA Benchmark (Apple Inc. / AAPL)
 
 **Target Corpus:** SEC Form 10-K Filings (FY2022, FY2023, FY2024)  
-**File Location:** [`data/eval/custom_eval.jsonl`](file:///c:/Project/Finance_RAG/data/eval/custom_eval.jsonl)  
+**File Location:** [`data/eval/custom_eval.jsonl`](../../data/eval/custom_eval.jsonl)  
 **Primary Objective:** Evaluate hybrid search (dense + sparse), cross-encoder reranking, tabular reasoning, narrative extraction, and hallucination guardrails across 50 gold-standard ground-truth questions.
 
 ---

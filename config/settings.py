@@ -16,9 +16,43 @@ load_dotenv()
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
+    # === LLM provider ===
+    llm_provider: str = Field(
+        default="gemini", description="Chat model provider: 'gemini' or 'openai'"
+    )
+    llm_model: str = Field(
+        default="",
+        description="Chat model for every pipeline step; empty = provider default "
+        "(gemini: gemini-2.5-flash, openai: OPENAI_MODEL)",
+    )
+    llm_base_url: str = Field(
+        default="", description="Override the provider's API URL (OpenAI-compatible)"
+    )
+    llm_reasoning_effort: str = Field(
+        default="",
+        description="Thinking level sent to the model; empty = provider default "
+        "(gemini: none, openai: not sent)",
+    )
+    llm_max_retries: int = Field(
+        default=5, description="Retries on rate-limit and server errors per LLM call"
+    )
+
+    # === Gemini ===
+    gemini_api_key: str = Field(default="", description="Gemini API key")
+
     # === OpenAI ===
     openai_api_key: str = Field(default="", description="OpenAI API key")
     openai_model: str = Field(default="gpt-4o", description="OpenAI model for generation/grading")
+
+    # === Eval judge (Ragas) ===
+    judge_model: str = Field(
+        default="", description="Ragas judge chat model; empty = same as the pipeline model"
+    )
+    judge_embedding_model: str = Field(
+        default="",
+        description="Ragas embedding model; empty = provider default "
+        "(gemini: gemini-embedding-001, openai: text-embedding-ada-002)",
+    )
 
     # === Qdrant ===
     qdrant_url: str = Field(default="http://localhost:6333", description="Qdrant server URL")

@@ -23,7 +23,6 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import argparse
 import json
-import random
 import time
 from datetime import datetime
 
@@ -32,6 +31,9 @@ from rich.console import Console
 from rich.table import Table
 
 from config.settings import get_settings
+from src.evaluation.eval_data import load_tatqa_samples
+from src.evaluation.eval_helpers import generate_crag_from_context
+from src.utils.llm_client import chat_completion, get_llm_client, get_llm_model
 from src.evaluation.numeric_eval import evaluate_numeric_accuracy, numeric_match
 from src.utils.logging import setup_logging
 
@@ -44,124 +46,11 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _table_to_markdown(table_data: list[list]) -> str:
-    """Convert TAT-QA table (list of rows) to markdown."""
-    if not table_data:
-        return ""
-    header = "| " + " | ".join(str(c) for c in table_data[0]) + " |"
-    sep = "| " + " | ".join("---" for _ in table_data[0]) + " |"
-    body = "\n".join(
-        "| " + " | ".join(str(c) for c in row) + " |"
-        for row in table_data[1:]
-    )
-    return "\n".join([header, sep, body])
-
-
-def _build_context(passage: dict) -> str:
-    """Build context string from a TAT-QA passage (table + paragraphs)."""
-    parts: list[str] = []
-    table_raw = passage.get("table", {})
-    if isinstance(table_raw, dict):
-        table_rows = table_raw.get("table", [])
-    else:
-        table_rows = table_raw
-
-    if table_rows:
-        parts.append("**Table:**\n" + _table_to_markdown(table_rows))
-
-    paras = passage.get("paragraphs", [])
-    if paras:
-        para_text = "\n\n".join(p.get("text", "") for p in paras if p.get("text"))
-        if para_text:
-            parts.append("**Paragraphs:**\n" + para_text)
-
-    return "\n\n".join(parts)
-
-
-def load_tatqa_samples(n: int = 50, seed: int = 42) -> list[dict]:
-    """Load n TAT-QA samples from the train file.
-
-    Each returned dict: {question, answer_str, context, derivation, answer_type}
-    """
-    local_path = Path(__file__).parent.parent.parent / "data" / "eval" / "tatqa_eval.jsonl"
-    if local_path.exists():
-        samples = [json.loads(l) for l in open(local_path, encoding="utf-8") if l.strip()]
-        return samples[:n]
-
-    from huggingface_hub import hf_hub_download
-
-    path = hf_hub_download(
-        repo_id="next-tat/TAT-QA",
-        filename="tatqa_dataset_train.json",
-        repo_type="dataset",
-    )
-    data = json.load(open(path, encoding="utf-8"))
-
-    # Flatten: one item per question
-    flat = []
-    for passage in data:
-        context = _build_context(passage)
-        for qa in passage.get("questions", []):
-            answer = qa.get("answer", "")
-            if isinstance(answer, list):
-                answer = ", ".join(str(a) for a in answer)
-            if not str(answer).strip():
-                continue
-            flat.append(
-                {
-                    "question": qa.get("question", ""),
-                    "answer_str": str(answer),
-                    "context": context,
-                    "derivation": qa.get("derivation", ""),
-                    "answer_type": qa.get("answer_type", ""),
-                    "scale": qa.get("scale", ""),
-                }
-            )
-
-    # Sample reproducibly
-    rng = random.Random(seed)
-    rng.shuffle(flat)
-    return flat[:n]
-
-
-from src.orchestration.nodes.generator import generator_node
-from src.orchestration.nodes.hallucination_guard import hallucination_guard_node
-from src.orchestration.state import CRAGState
-
 _NAIVE_SYSTEM_PROMPT = (
     "You are a financial analyst assistant. Answer the question based ONLY on "
     "the provided context. If the context does not contain enough information, "
     "say 'Insufficient information in context.'"
 )
-
-
-def _generate_crag(question: str, context: str) -> tuple[str, float]:
-    """CRAG generation path: generator_node (citations, step-by-step arithmetic, structured JSON) + hallucination_guard_node."""
-    t0 = time.perf_counter()
-    ctx_dict = {
-        "child_text": context,
-        "parent_text": context,
-        "metadata": {
-            "company_ticker": "TAT-QA",
-            "section_title": "Financial Table and Statement Context",
-            "fiscal_year": "N/A",
-            "filing_type": "Report",
-        },
-    }
-    state: CRAGState = {
-        "original_query": question,
-        "enriched_contexts": [ctx_dict],
-        "confidence": "high",
-        "cost_accumulated": 0.0,
-    }
-    try:
-        gen_out = generator_node(state)
-        state.update(gen_out)
-        guard_out = hallucination_guard_node(state)
-        answer = guard_out.get("final_answer") or state.get("generation", "")
-    except Exception as e:
-        answer = f"Error: {e}"
-    return answer, round(time.perf_counter() - t0, 3)
 
 
 def _generate_naive(
@@ -170,7 +59,7 @@ def _generate_naive(
     """Naive baseline path: direct conversational prompt without structured blocks or hallucination checks."""
     t0 = time.perf_counter()
     try:
-        resp = llm.chat.completions.create(
+        resp, _ = chat_completion(
             model=model,
             messages=[
                 {"role": "system", "content": _NAIVE_SYSTEM_PROMPT},
@@ -209,14 +98,14 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging(args.log_level)
-    settings = get_settings()
+    get_settings()  # loads .env into the environment
 
     console.print("[bold cyan]Slice 3 — TAT-QA Generation (context-injected)[/bold cyan]")
 
     samples = load_tatqa_samples(args.n)
     console.print(f"Loaded {len(samples)} TAT-QA samples")
 
-    llm = OpenAI()
+    llm = get_llm_client()
 
     # Two distinct generation paths:
     # 1. CRAG: generator_node with structured prompt + step-by-step arithmetic + hallucination guardrail
@@ -229,7 +118,7 @@ def main() -> None:
 
     console.print("\n[bold]Running CRAG generation path (generator_node + guardrail)...[/bold]")
     for i, s in enumerate(samples):
-        pred, lat = _generate_crag(s["question"], s["context"])
+        pred, lat = generate_crag_from_context(s["question"], s["context"])
         crag_preds.append(pred)
         crag_latencies.append(lat)
         console.print(f"  CRAG Q{i+1:03d}: {lat:.1f}s | pred={pred[:60]}")
@@ -238,7 +127,7 @@ def main() -> None:
         console.print("\n[bold]Running Naive generation path (baseline prompt)...[/bold]")
         for i, s in enumerate(samples):
             pred, lat = _generate_naive(
-                s["question"], s["context"], llm, settings.openai_model
+                s["question"], s["context"], llm, get_llm_model()
             )
             naive_preds.append(pred)
             naive_latencies.append(lat)
