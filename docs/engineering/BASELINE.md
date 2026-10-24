@@ -1,6 +1,6 @@
 # Baseline — how the repo stands on 2026-10-23
 
-Taken on branch `review/engineering-2026-10-23`, starting from commit `1b2664b`.
+Taken on branch `review/engineering-2026-10-23`, starting from commit `45966d4`.
 Every number on this page came from a command run in a cloud VM on that date. The VM had:
 
 - no `.env` file and no `OPENAI_API_KEY`
@@ -110,8 +110,8 @@ So the README's evaluation numbers (coverage, precision, Ragas scores) are **not
 | When / branch | Tests | Import check | Notes |
 |---|---|---|---|
 | 2026-10-23, network allowed, `review/engineering-2026-10-23` | 113 passed / 0 failed | 59/59 | The 17 tiktoken tests pass once `openaipublic.blob.core.windows.net` is reachable |
-| `fix/production-grader-and-reranker` (`345bf10`) | 120 passed / 0 failed | not rerun | +7 tests (reranker, graph wiring) |
-| `feat/llm-provider-gemini` (`4423984`) | 129 passed / 0 failed, also with both API keys unset | 60/60 | +9 tests (provider selection, Gemini price); ruff 547 |
+| `fix/production-grader-and-reranker` (`fee402c`) | 120 passed / 0 failed | not rerun | +7 tests (reranker, graph wiring) |
+| `feat/llm-provider-gemini` (`34f5ab7`) | 129 passed / 0 failed, also with both API keys unset | 60/60 | +9 tests (provider selection, Gemini price); ruff 547 |
 | `docs/organize-structure` | 129 passed / 0 failed, also with both API keys unset | 60/60 | per folder: chunking 16, evaluation 37, ingestion 24, orchestration 24, retrieval 5, ui 4, utils 19; compileall OK; ruff 547 |
 
 | `refactor/eval-structure` | 138 passed / 0 failed | 62/62 | +9 tests (shared eval loaders/helpers); scripts/eval imports 16/16; script-to-script imports 0; ruff 545 |

@@ -1,6 +1,6 @@
 # Finance RAG — Eval Progress Log
 
-> **Historical record from 2026-10-01.** Kept as written at the time; file names, numbers and plans may no longer match the code. For current docs start at [docs/README.md](../README.md).
+> **Historical record from 2026-10-01.** Kept as written at the time; file names, numbers and plans may no longer match the code. For current docs start at [docs/README.md](../README.md). Commit IDs below are pre-2026-10-24; see [the ID map](2026-10-24-commit-id-map.md).
 
 Branch: `eval/part-a-repair` | Start SHA: `78e05dd`
 

@@ -33,6 +33,7 @@ Code areas with their own rules have a short `CLAUDE.md` next to the code:
 | 2026-09-25 | [`history/2026-09-25-ingestion-log.md`](history/2026-09-25-ingestion-log.md) | Fixing SEC table parsing and chunking, step by step |
 | 2026-09-25 | [`history/2026-09-25-chunking-analysis.md`](history/2026-09-25-chunking-analysis.md) | Before/after report on those chunking changes |
 | 2026-10-01 | [`history/2026-10-01-eval-progress-log.md`](history/2026-10-01-eval-progress-log.md) | The eval work that led to v1.0 (Part A, Part B, Phases A–C) |
+| 2026-10-24 | [`history/2026-10-24-commit-id-map.md`](history/2026-10-24-commit-id-map.md) | Old → new commit IDs after removing the FinanceBench file from history |
 
 ## Where new docs go
 

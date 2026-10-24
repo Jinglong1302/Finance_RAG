@@ -1,6 +1,6 @@
 # Engineering review — 2026-10-23
 
-Read-only review of commit `1b2664b`. Nothing in `src/`, `tests/`, `scripts/` or config was changed.
+Read-only review of commit `45966d4`. Nothing in `src/`, `tests/`, `scripts/` or config was changed.
 
 How each item was checked is marked:
 
@@ -13,14 +13,15 @@ Effort: **S** = under an hour, **M** = half a day to a day, **L** = more. "Moves
 
 | Item | Status | Where |
 |---|---|---|
-| 1. Reranker never runs | **Fixed**, with tests that fail on the old code | branch `fix/production-grader-and-reranker` (`345bf10`) |
+| 1. Reranker never runs | **Fixed**, with tests that fail on the old code | branch `fix/production-grader-and-reranker` (`fee402c`) |
 | 2. Wrong grader in production | **Fixed**: Part B wired into the graph, as the owner decided | same commit |
-| 8. Settings that do nothing | **Partly**: the model now comes from `LLM_PROVIDER` / `LLM_MODEL`. `RETRIEVAL_TOP_K`, `RERANK_TOP_K*`, `MAX_CRAG_CYCLES` and `BUDGET_*` still do nothing | branch `feat/llm-provider-gemini` (`4423984`) |
+| 8. Settings that do nothing | **Partly**: the model now comes from `LLM_PROVIDER` / `LLM_MODEL`. `RETRIEVAL_TOP_K`, `RERANK_TOP_K*`, `MAX_CRAG_CYCLES` and `BUDGET_*` still do nothing | branch `feat/llm-provider-gemini` (`34f5ab7`) |
 | 9. Ragas judge mismatch | **Fixed**: all three `ragas.evaluate` calls pass the configured judge and embeddings | same commit |
 | 17. New client per call | **Fixed**: one shared client in `src/utils/llm_client.py` | same commit |
 | 21. Docs drift | **Partly**: README tree, docs map and history labels fixed in `docs/organize-structure`; the reranker-name question is answered (owner's `.env` uses `bge-reranker-base`) | branch `docs/organize-structure` |
 | 19. Eval scripts import each other | **Fixed**: shared code moved to `src/evaluation/eval_data.py` and `eval_helpers.py`; script-to-script imports 11 → 0. The runners still copy the graph steps instead of calling `build_crag_graph` | branch `refactor/eval-structure` |
 | Structure: one-off scripts | **Done**: `eval_ablations`, `eval_oracle`, `run_all_evals`, `generate_3_way_report` moved to `scripts/eval/archive/` | same branch |
+| 5. Licensed dataset in history | **Fixed**: history rewritten without the file and force-pushed (owner's OK, 2026-10-24); ID table in `docs/history/2026-10-24-commit-id-map.md` | all branches and `v1.0` |
 | All others | Open | — |
 
 New finding while running evals: the Gemini free tier allows **20 requests per day per model**, too few for any eval run (see `docs/guides/evaluation.md`). Errors from that limit become scored "answers" (item 6), so item 6 matters more now.
@@ -34,7 +35,7 @@ New finding while running evals: the Gemini free tier allows **20 requests per d
   - Results keep their hybrid RRF scores, which are small positive numbers (at most about 0.03 with the weights in `hybrid_search.py:200-219`). The "Stage 1 coarse gate" (`RERANKER_COARSE_THRESHOLD=-2.0`, used in `grader.py:53` and `sufficiency_grader.py:69`) can therefore only fire when there are no results at all.
   - The table-diversity check `c.score > -3.0` (`reranker_node.py:78`) is always true.
   - Order after "reranking" is just the hybrid search order.
-  - This line came in with commit `cbac640` (2026-09-28). Every eval script uses `make_reranker_node`, so the v1.0 numbers in README and `results/FINAL.md` were measured **without** the cross-encoder, while the README describes it as part of the pipeline.
+  - This line came in with commit `3d40581` (2026-09-28). Every eval script uses `make_reranker_node`, so the v1.0 numbers in README and `results/FINAL.md` were measured **without** the cross-encoder, while the README describes it as part of the pipeline.
 - **Proof:** with a fake model that counts calls, the node made **0** `compute_score` calls for 25 candidates and kept scores `[0.03, 0.029, …]`; calling `rerank(..., top_k=5)` directly made 1 call. Script: see "Rerun the checks" at the bottom.
 - **Fix:** in `rerank`, return early only when the list is empty (or skip scoring only when `len(candidates) <= 1`). Add an offline test using a fake model, like the check script. Then re-run the evals, because the coarse gate and the chunk order will change. Expect different coverage/precision.
 - **Effort:** S for the code and test; the eval rerun needs your key and Qdrant. **Moves files:** no.
@@ -61,9 +62,10 @@ New finding while running evals: the Gemini free tier allows **20 requests per d
 - **Fix:** reject requests whose `Content-Type` is not `application/json`, and reject `Origin` headers that are not the UI's own. Optionally a token in `.env`.
 - **Effort:** S. **Moves files:** no.
 
-### 5. A non-commercial dataset is still in the public git history — **licence, decision** [ran]
+### 5. A non-commercial dataset was in the public git history — **licence, decision** [ran]
 
-- **Where:** `data/eval/financebench_in_corpus.jsonl` was added in `e9de99f` (2026-09-26) and deleted in `1b2664b`. The repo is public (checked with the GitHub repo listing). Anyone can still get the file from history.
+- **Status (2026-10-24): fixed by owner decision (b).** History was rewritten to remove the file from every commit on all branches and the `v1.0` tag, then force-pushed. Every commit from 2026-09-26 on got a new ID; old → new IDs are in `docs/history/2026-10-24-commit-id-map.md`.
+- **Where (as found):** `data/eval/financebench_in_corpus.jsonl` was added on 2026-09-26 and deleted on 2026-10-01. The repo is public (checked with the GitHub repo listing).
 - **Why it matters:** README says the CC BY-NC 4.0 licence "prohibits commercial redistribution". A public repo with the file in history is still distributing it. Whether that is a problem for non-commercial use is your call, not mine.
 - **Fix:** your choice: (a) accept it, since CC BY-NC allows non-commercial sharing with attribution — then make the README wording match; or (b) rewrite history. (b) needs a force-push, which your rules forbid without your OK.
 - **Effort:** S for (a), M for (b). **Moves files:** no.

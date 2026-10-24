@@ -1,10 +1,10 @@
 # AI provider and model call sites
 
-Every place that picks or calls an AI model, as of commit `1b2664b` (2026-10-23).
+Every place that picks or calls an AI model, as of commit `45966d4` (2026-10-23).
 Found with `grep` over `src/`, `config/`, `scripts/` and `tests/`, then read by hand.
 Line numbers are for that commit. This is the input for phase 2 (choose provider and model from `.env`).
 
-> **Snapshot, now partly out of date.** Since branch `feat/llm-provider-gemini` (`4423984`), every chat call in sections 1–3 goes through `chat_completion()` in `src/utils/llm_client.py`. The model comes from `LLM_PROVIDER` / `LLM_MODEL` (default Gemini `gemini-2.5-flash`), and Ragas gets its judge from `get_ragas_judge()`. Sections 4 (local models) and 6 (unused settings, apart from the model) still hold. The file:line references below are for the old commit.
+> **Snapshot, now partly out of date.** Since branch `feat/llm-provider-gemini` (`34f5ab7`), every chat call in sections 1–3 goes through `chat_completion()` in `src/utils/llm_client.py`. The model comes from `LLM_PROVIDER` / `LLM_MODEL` (default Gemini `gemini-2.5-flash`), and Ragas gets its judge from `get_ragas_judge()`. Sections 4 (local models) and 6 (unused settings, apart from the model) still hold. The file:line references below are for the old commit.
 
 ## Short version
 
